@@ -7,19 +7,19 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
-dist/
-build/
 *.egg-info/
+
+# Node / web client
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.local
 
 # Environment / secrets
 .env
 .env.*
 !.env.example
-
-# Models, caches, local data
-.cache/
-models/
-evaluation/results/*.tmp
 
 # Editors / OS
 .idea/
