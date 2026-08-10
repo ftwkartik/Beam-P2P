@@ -1,0 +1,37 @@
+# pre-commit run --all-files
+#
+# Kept fast and local: formatting, linting and basic hygiene. Type checking, the full
+# test suite and the web toolchain run in CI (.github/workflows/ci.yml) instead, where
+# a slower, more thorough check doesn't block every commit.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+        # tsconfig*.json is JSONC (allows comments), which is valid for tsc but not
+        # strict JSON.
+        exclude: ^web/tsconfig.*\.json$
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: ^(uv\.lock|web/package-lock\.json)$

@@ -1,0 +1,36 @@
+/**
+ * Minimal base styles for the Milestone 1 skeleton. Real visual design (per
+ * docs/adr/007-react-typescript-client.md) is built alongside the connection and
+ * transfer UI in Milestones 7-9.
+ */
+:root {
+  --text: #1f2028;
+  --bg: #ffffff;
+  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font: 16px/1.5 var(--sans);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #e5e4e7;
+    --bg: #16171d;
+  }
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 16px;
+}

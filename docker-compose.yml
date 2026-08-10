@@ -1,0 +1,53 @@
+# Local development / demo stack. `docker compose up --build` after
+# `cp .env.example .env && ./scripts/gen_secrets.sh` (see README.md).
+#
+# Milestone 1 scope: server + web + redis. TURN (coturn) and a second server replica
+# arrive in Milestones 5-6; Postgres only if the accounts/history option in Milestone
+# 11 is taken (see docs/roadmap.md).
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    ports:
+      - "8000:8000"
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+
+volumes:
+  redis-data:
