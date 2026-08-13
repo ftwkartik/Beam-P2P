@@ -29,3 +29,6 @@ FRAME_HEADER_SIZE: int = 16
 
 #: Magic bytes identifying a Beam binary frame ("BM").
 FRAME_MAGIC: bytes = b"\x42\x4d"
+
+#: Binary frame format version, carried in every frame header.
+FRAME_VERSION: int = 1

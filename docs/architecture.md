@@ -109,7 +109,7 @@ sequenceDiagram
   participant B as Receiver (B)
   A->>API: POST /api/v1/rooms
   API->>R: allocate nameplate (SET NX), store room + HMAC(code), TTL
-  API-->>A: {room_id, code "7-orbit-lantern-tiger", room_token(A)}
+  API-->>A: {room_id, code "7-otter-lantern-tiger", room_token(A)}
   A->>API: WS /ws, first msg hello{token}
   API->>R: presence A, SUBSCRIBE room:{id}
   API-->>A: welcome{peer_id, role: creator}

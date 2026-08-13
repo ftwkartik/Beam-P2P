@@ -15,9 +15,9 @@ silently intercept the connection.
 
 ## Core user experience
 
-1. **Alice** opens Beam and clicks *Send*, then picks files or a folder. She gets a code such as `7-orbit-lantern-tiger`
+1. **Alice** opens Beam and clicks *Send*, then picks files or a folder. She gets a code such as `7-otter-lantern-tiger`
    and a link with a QR code.
-2. **Bob** opens the link, or types the code into the web app or `beam receive 7-orbit-lantern-tiger` in a terminal.
+2. **Bob** opens the link, or types the code into the web app or `beam receive 7-otter-lantern-tiger` in a terminal.
 3. The two peers connect directly. If direct fails, they connect through Beam's TURN relay, which only ever sees
    encrypted bytes. Both screens show the **same 4-emoji verification code**. If they match (compared over the phone or
    side by side), nobody is in the middle.

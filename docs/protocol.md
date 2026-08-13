@@ -11,7 +11,7 @@ them. Unknown fields are rejected (`extra="forbid"`), and unknown `type` values 
 
 ## 1. Room codes
 
-Format: `<nameplate>-<word>-<word>-<word>`, e.g. `7-orbit-lantern-tiger`.
+Format: `<nameplate>-<word>-<word>-<word>`, e.g. `7-otter-lantern-tiger`.
 
 - **Nameplate:** a small integer allocated by the server (1–999, widening to 9999 under load). It identifies the room
   and is **not secret**.
@@ -19,7 +19,7 @@ Format: `<nameplate>-<word>-<word>-<word>`, e.g. `7-orbit-lantern-tiger`.
   38.8 bits. They are generated server-side in the MVP and stored only as `HMAC-SHA256(pepper, room_id || words)`.
 - Input is normalized before comparison: lowercase, whitespace and hyphens collapsed, and autocompletion against the
   wordlist in the UI and CLI.
-- **Share link:** `https://<host>/r#7-orbit-lantern-tiger`. The code sits in the URL **fragment**, so it never appears
+- **Share link:** `https://<host>/r#7-otter-lantern-tiger`. The code sits in the URL **fragment**, so it never appears
   in server or proxy logs or in Referer headers.
 
 ## 2. REST API (`/api/v1`)
