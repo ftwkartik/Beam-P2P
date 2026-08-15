@@ -1,0 +1,33 @@
+{
+  "description": "Binary frame pack() output for known inputs. Both the Python and (from Milestone 8) TypeScript frame codecs must produce byte-identical output for each case. See docs/protocol.md §4.2.",
+  "cases": [
+    {
+      "file_index": 0,
+      "offset": 0,
+      "payload_hex": "",
+      "last_of_block": false,
+      "packed_hex": "424d0100000000000000000000000000"
+    },
+    {
+      "file_index": 1,
+      "offset": 65536,
+      "payload_hex": "68656c6c6f",
+      "last_of_block": true,
+      "packed_hex": "424d010100000001000000000001000068656c6c6f"
+    },
+    {
+      "file_index": 4294967295,
+      "offset": 0,
+      "payload_hex": "00",
+      "last_of_block": false,
+      "packed_hex": "424d0100ffffffff000000000000000000"
+    },
+    {
+      "file_index": 0,
+      "offset": 18446744073709551615,
+      "payload_hex": "ff",
+      "last_of_block": true,
+      "packed_hex": "424d010100000000ffffffffffffffffff"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "description": "Room-code normalization for known raw inputs (docs/protocol.md §1): whitespace/hyphen/case variation all fold to the same canonical form. See beam_protocol.codes.normalize_code.",
+  "cases": [
+    {
+      "raw": "7-otter-lantern-tiger",
+      "nameplate": 7,
+      "words": [
+        "otter",
+        "lantern",
+        "tiger"
+      ],
+      "canonical": "7-otter-lantern-tiger"
+    },
+    {
+      "raw": "7 OTTER Lantern-tiger",
+      "nameplate": 7,
+      "words": [
+        "otter",
+        "lantern",
+        "tiger"
+      ],
+      "canonical": "7-otter-lantern-tiger"
+    },
+    {
+      "raw": "  7-otter-lantern-tiger  ",
+      "nameplate": 7,
+      "words": [
+        "otter",
+        "lantern",
+        "tiger"
+      ],
+      "canonical": "7-otter-lantern-tiger"
+    },
+    {
+      "raw": "42-lantern tiger-otter",
+      "nameplate": 42,
+      "words": [
+        "lantern",
+        "tiger",
+        "otter"
+      ],
+      "canonical": "42-lantern-tiger-otter"
+    }
+  ]
+}

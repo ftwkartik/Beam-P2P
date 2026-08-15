@@ -1,0 +1,59 @@
+{
+  "description": "SAS derivation output for known (room_id, fingerprint_a, fingerprint_b) inputs, order-independent in the fingerprints. Both implementations must derive the same 5 symbols. See docs/protocol.md §4.4.",
+  "cases": [
+    {
+      "room_id": "room-1",
+      "fp_a": "sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB",
+      "fp_b": "sha-256 CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD",
+      "symbols": [
+        {
+          "emoji": "🌯",
+          "name": "burrito"
+        },
+        {
+          "emoji": "🍘",
+          "name": "ricecracker"
+        },
+        {
+          "emoji": "🪁",
+          "name": "kite"
+        },
+        {
+          "emoji": "🦆",
+          "name": "duck"
+        },
+        {
+          "emoji": "🚲",
+          "name": "bicycle"
+        }
+      ]
+    },
+    {
+      "room_id": "otter-lantern-tiger",
+      "fp_a": "sha-256 01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01",
+      "fp_b": "sha-256 FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF",
+      "symbols": [
+        {
+          "emoji": "🍙",
+          "name": "riceball"
+        },
+        {
+          "emoji": "🐱",
+          "name": "cat"
+        },
+        {
+          "emoji": "🍪",
+          "name": "cookie"
+        },
+        {
+          "emoji": "🐕",
+          "name": "dog2"
+        },
+        {
+          "emoji": "🌼",
+          "name": "blossom"
+        }
+      ]
+    }
+  ]
+}

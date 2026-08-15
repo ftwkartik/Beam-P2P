@@ -50,6 +50,11 @@ jobs:
       - name: Test (pytest)
         run: uv run pytest -v
 
+      - name: Protocol schema is not stale
+        run: |
+          uv run python -m beam_protocol.export_schema
+          git diff --exit-code -- protocol/schema
+
   web:
     name: Web (lint, types, tests, build)
     runs-on: ubuntu-latest
@@ -73,6 +78,9 @@ jobs:
 
       - name: Type check (tsc)
         run: npm run typecheck
+
+      - name: Generated protocol types are not stale
+        run: npm run codegen:check
 
       - name: Test (vitest)
         run: npm test

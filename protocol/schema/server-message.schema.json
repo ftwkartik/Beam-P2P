@@ -1,0 +1,381 @@
+{
+  "$defs": {
+    "IceCandidateData": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate": {
+          "title": "Candidate",
+          "type": "string"
+        },
+        "sdpMLineIndex": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sdpmlineindex"
+        },
+        "sdpMid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sdpmid"
+        },
+        "usernameFragment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Usernamefragment"
+        }
+      },
+      "required": [
+        "candidate"
+      ],
+      "title": "IceCandidateData",
+      "type": "object"
+    },
+    "IceSignal": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IceCandidateData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "kind": {
+          "const": "candidate",
+          "default": "candidate",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "IceSignal",
+      "type": "object"
+    },
+    "PeerInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "peer_id": {
+          "title": "Peer Id",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "creator",
+            "joiner"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "online",
+            "reconnecting"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "peer_id",
+        "role",
+        "state"
+      ],
+      "title": "PeerInfo",
+      "type": "object"
+    },
+    "PeerJoinedMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "peer_id": {
+          "title": "Peer Id",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "creator",
+            "joiner"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "type": {
+          "const": "peer_joined",
+          "default": "peer_joined",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "peer_id",
+        "role"
+      ],
+      "title": "PeerJoinedMessage",
+      "type": "object"
+    },
+    "PeerLeftMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "peer_id": {
+          "title": "Peer Id",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "left",
+            "timeout",
+            "closed"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "type": {
+          "const": "peer_left",
+          "default": "peer_left",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "peer_id",
+        "reason"
+      ],
+      "title": "PeerLeftMessage",
+      "type": "object"
+    },
+    "PeerReconnectingMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "peer_id": {
+          "title": "Peer Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "peer_reconnecting",
+          "default": "peer_reconnecting",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "peer_id"
+      ],
+      "title": "PeerReconnectingMessage",
+      "type": "object"
+    },
+    "SdpDescription": {
+      "additionalProperties": false,
+      "properties": {
+        "sdp": {
+          "title": "Sdp",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "offer",
+            "answer",
+            "pranswer",
+            "rollback"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "sdp"
+      ],
+      "title": "SdpDescription",
+      "type": "object"
+    },
+    "SdpSignal": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "$ref": "#/$defs/SdpDescription"
+        },
+        "kind": {
+          "const": "description",
+          "default": "description",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "title": "SdpSignal",
+      "type": "object"
+    },
+    "ServerErrorMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ServerErrorMessage",
+      "type": "object"
+    },
+    "ServerSignalMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "discriminator": {
+            "mapping": {
+              "candidate": "#/$defs/IceSignal",
+              "description": "#/$defs/SdpSignal"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SdpSignal"
+            },
+            {
+              "$ref": "#/$defs/IceSignal"
+            }
+          ],
+          "title": "Data"
+        },
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "type": {
+          "const": "signal",
+          "default": "signal",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "data"
+      ],
+      "title": "ServerSignalMessage",
+      "type": "object"
+    },
+    "WelcomeMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_at": {
+          "title": "Expires At",
+          "type": "string"
+        },
+        "peer_id": {
+          "title": "Peer Id",
+          "type": "string"
+        },
+        "peers": {
+          "items": {
+            "$ref": "#/$defs/PeerInfo"
+          },
+          "title": "Peers",
+          "type": "array"
+        },
+        "polite": {
+          "title": "Polite",
+          "type": "boolean"
+        },
+        "role": {
+          "enum": [
+            "creator",
+            "joiner"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "room_id": {
+          "title": "Room Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "welcome",
+          "default": "welcome",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "peer_id",
+        "room_id",
+        "role",
+        "polite",
+        "peers",
+        "expires_at"
+      ],
+      "title": "WelcomeMessage",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "error": "#/$defs/ServerErrorMessage",
+      "peer_joined": "#/$defs/PeerJoinedMessage",
+      "peer_left": "#/$defs/PeerLeftMessage",
+      "peer_reconnecting": "#/$defs/PeerReconnectingMessage",
+      "signal": "#/$defs/ServerSignalMessage",
+      "welcome": "#/$defs/WelcomeMessage"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/WelcomeMessage"
+    },
+    {
+      "$ref": "#/$defs/PeerJoinedMessage"
+    },
+    {
+      "$ref": "#/$defs/PeerReconnectingMessage"
+    },
+    {
+      "$ref": "#/$defs/PeerLeftMessage"
+    },
+    {
+      "$ref": "#/$defs/ServerSignalMessage"
+    },
+    {
+      "$ref": "#/$defs/ServerErrorMessage"
+    }
+  ],
+  "title": "ServerMessage"
+}

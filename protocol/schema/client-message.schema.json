@@ -1,0 +1,241 @@
+{
+  "$defs": {
+    "ClientInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "web",
+            "cli"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "version"
+      ],
+      "title": "ClientInfo",
+      "type": "object"
+    },
+    "ClientSignalMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "discriminator": {
+            "mapping": {
+              "candidate": "#/$defs/IceSignal",
+              "description": "#/$defs/SdpSignal"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SdpSignal"
+            },
+            {
+              "$ref": "#/$defs/IceSignal"
+            }
+          ],
+          "title": "Data"
+        },
+        "type": {
+          "const": "signal",
+          "default": "signal",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "title": "ClientSignalMessage",
+      "type": "object"
+    },
+    "HelloMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "client": {
+          "$ref": "#/$defs/ClientInfo"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "type": {
+          "const": "hello",
+          "default": "hello",
+          "title": "Type",
+          "type": "string"
+        },
+        "v": {
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "token",
+        "client"
+      ],
+      "title": "HelloMessage",
+      "type": "object"
+    },
+    "IceCandidateData": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate": {
+          "title": "Candidate",
+          "type": "string"
+        },
+        "sdpMLineIndex": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sdpmlineindex"
+        },
+        "sdpMid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sdpmid"
+        },
+        "usernameFragment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Usernamefragment"
+        }
+      },
+      "required": [
+        "candidate"
+      ],
+      "title": "IceCandidateData",
+      "type": "object"
+    },
+    "IceSignal": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IceCandidateData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "kind": {
+          "const": "candidate",
+          "default": "candidate",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "IceSignal",
+      "type": "object"
+    },
+    "LeaveMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "leave",
+          "default": "leave",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "LeaveMessage",
+      "type": "object"
+    },
+    "SdpDescription": {
+      "additionalProperties": false,
+      "properties": {
+        "sdp": {
+          "title": "Sdp",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "offer",
+            "answer",
+            "pranswer",
+            "rollback"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "sdp"
+      ],
+      "title": "SdpDescription",
+      "type": "object"
+    },
+    "SdpSignal": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "$ref": "#/$defs/SdpDescription"
+        },
+        "kind": {
+          "const": "description",
+          "default": "description",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "title": "SdpSignal",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "hello": "#/$defs/HelloMessage",
+      "leave": "#/$defs/LeaveMessage",
+      "signal": "#/$defs/ClientSignalMessage"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/HelloMessage"
+    },
+    {
+      "$ref": "#/$defs/ClientSignalMessage"
+    },
+    {
+      "$ref": "#/$defs/LeaveMessage"
+    }
+  ],
+  "title": "ClientMessage"
+}

@@ -1,0 +1,471 @@
+{
+  "$defs": {
+    "AcceptMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "have": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Have",
+          "type": "object"
+        },
+        "transfer_id": {
+          "title": "Transfer Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "accept",
+          "default": "accept",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id"
+      ],
+      "title": "AcceptMessage",
+      "type": "object"
+    },
+    "AckMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "minimum": 0,
+          "title": "File",
+          "type": "integer"
+        },
+        "type": {
+          "const": "ack",
+          "default": "ack",
+          "title": "Type",
+          "type": "string"
+        },
+        "verified": {
+          "items": {
+            "$ref": "#/$defs/BlockRange"
+          },
+          "title": "Verified",
+          "type": "array"
+        }
+      },
+      "required": [
+        "file",
+        "verified"
+      ],
+      "title": "AckMessage",
+      "type": "object"
+    },
+    "BlockMessage": {
+      "additionalProperties": false,
+      "description": "Announces a block's hash before its frames are sent (docs/protocol.md \u00a74.3).",
+      "properties": {
+        "file": {
+          "minimum": 0,
+          "title": "File",
+          "type": "integer"
+        },
+        "index": {
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "type": {
+          "const": "block",
+          "default": "block",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "index",
+        "sha256"
+      ],
+      "title": "BlockMessage",
+      "type": "object"
+    },
+    "BlockRange": {
+      "additionalProperties": false,
+      "description": "An inclusive range of verified block indices, used to batch `ack` messages.",
+      "properties": {
+        "end": {
+          "minimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "BlockRange",
+      "type": "object"
+    },
+    "CancelMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "transfer_id": {
+          "title": "Transfer Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "cancel",
+          "default": "cancel",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "reason"
+      ],
+      "title": "CancelMessage",
+      "type": "object"
+    },
+    "DeclineMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "transfer_id": {
+          "title": "Transfer Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "decline",
+          "default": "decline",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "reason"
+      ],
+      "title": "DeclineMessage",
+      "type": "object"
+    },
+    "FileDoneMessage": {
+      "additionalProperties": false,
+      "description": "Announces the file root hash (over all block hashes; see docs/protocol.md \u00a74.3).",
+      "properties": {
+        "file": {
+          "minimum": 0,
+          "title": "File",
+          "type": "integer"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "type": {
+          "const": "file_done",
+          "default": "file_done",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "sha256"
+      ],
+      "title": "FileDoneMessage",
+      "type": "object"
+    },
+    "FileOffer": {
+      "additionalProperties": false,
+      "description": "One file within an `offer_files` manifest.",
+      "properties": {
+        "index": {
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "mime": {
+          "title": "Mime",
+          "type": "string"
+        },
+        "mtime": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mtime"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "size": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "index",
+        "path",
+        "size",
+        "mime"
+      ],
+      "title": "FileOffer",
+      "type": "object"
+    },
+    "FileVerifiedMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "minimum": 0,
+          "title": "File",
+          "type": "integer"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "file_verified",
+          "default": "file_verified",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "ok"
+      ],
+      "title": "FileVerifiedMessage",
+      "type": "object"
+    },
+    "NackMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "minimum": 0,
+          "title": "File",
+          "type": "integer"
+        },
+        "index": {
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "reason": {
+          "const": "hash_mismatch",
+          "default": "hash_mismatch",
+          "title": "Reason",
+          "type": "string"
+        },
+        "type": {
+          "const": "nack",
+          "default": "nack",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "index"
+      ],
+      "title": "NackMessage",
+      "type": "object"
+    },
+    "OfferFilesMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "block_size": {
+          "exclusiveMinimum": 0,
+          "title": "Block Size",
+          "type": "integer"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/FileOffer"
+          },
+          "maxItems": 10000,
+          "title": "Files",
+          "type": "array"
+        },
+        "transfer_id": {
+          "title": "Transfer Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "offer_files",
+          "default": "offer_files",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "block_size",
+        "files"
+      ],
+      "title": "OfferFilesMessage",
+      "type": "object"
+    },
+    "PeerErrorMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "PeerErrorMessage",
+      "type": "object"
+    },
+    "PeerHelloMessage": {
+      "additionalProperties": false,
+      "description": "The first message on the `control` channel once it opens.",
+      "properties": {
+        "app_version": {
+          "title": "App Version",
+          "type": "string"
+        },
+        "caps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Caps",
+          "type": "array"
+        },
+        "max_frame": {
+          "exclusiveMinimum": 0,
+          "title": "Max Frame",
+          "type": "integer"
+        },
+        "proto": {
+          "default": 1,
+          "title": "Proto",
+          "type": "integer"
+        },
+        "type": {
+          "const": "hello",
+          "default": "hello",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "app_version",
+        "max_frame"
+      ],
+      "title": "PeerHelloMessage",
+      "type": "object"
+    },
+    "TransferDoneMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "transfer_id": {
+          "title": "Transfer Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "transfer_done",
+          "default": "transfer_done",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id"
+      ],
+      "title": "TransferDoneMessage",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "accept": "#/$defs/AcceptMessage",
+      "ack": "#/$defs/AckMessage",
+      "block": "#/$defs/BlockMessage",
+      "cancel": "#/$defs/CancelMessage",
+      "decline": "#/$defs/DeclineMessage",
+      "error": "#/$defs/PeerErrorMessage",
+      "file_done": "#/$defs/FileDoneMessage",
+      "file_verified": "#/$defs/FileVerifiedMessage",
+      "hello": "#/$defs/PeerHelloMessage",
+      "nack": "#/$defs/NackMessage",
+      "offer_files": "#/$defs/OfferFilesMessage",
+      "transfer_done": "#/$defs/TransferDoneMessage"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/PeerHelloMessage"
+    },
+    {
+      "$ref": "#/$defs/OfferFilesMessage"
+    },
+    {
+      "$ref": "#/$defs/AcceptMessage"
+    },
+    {
+      "$ref": "#/$defs/DeclineMessage"
+    },
+    {
+      "$ref": "#/$defs/BlockMessage"
+    },
+    {
+      "$ref": "#/$defs/AckMessage"
+    },
+    {
+      "$ref": "#/$defs/NackMessage"
+    },
+    {
+      "$ref": "#/$defs/FileDoneMessage"
+    },
+    {
+      "$ref": "#/$defs/FileVerifiedMessage"
+    },
+    {
+      "$ref": "#/$defs/TransferDoneMessage"
+    },
+    {
+      "$ref": "#/$defs/CancelMessage"
+    },
+    {
+      "$ref": "#/$defs/PeerErrorMessage"
+    }
+  ],
+  "title": "PeerMessage"
+}
