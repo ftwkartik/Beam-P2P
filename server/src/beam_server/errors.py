@@ -66,6 +66,27 @@ class UnauthorizedError(BeamError):
     code = "UNAUTHORIZED"
 
 
+class InvalidRoomCodeError(BeamError):
+    """An unknown room or a wrong code -- deliberately the same response for both
+    (docs/security.md §1): the difference is not something a guesser should learn.
+    """
+
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "INVALID_CODE"
+
+
+class RoomFullError(BeamError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "ROOM_FULL"
+
+
+class RoomBurnedError(BeamError):
+    """5 wrong codes were tried against this room's nameplate (docs/security.md §1)."""
+
+    status_code = status.HTTP_410_GONE
+    code = "ROOM_BURNED"
+
+
 class NotReadyError(BeamError):
     """Raised when a dependency (e.g. Redis) required for /ready is unreachable."""
 

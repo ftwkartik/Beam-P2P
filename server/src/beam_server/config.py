@@ -49,6 +49,28 @@ class Settings(BaseSettings):
     #: Shared secret for minting ephemeral TURN credentials. Introduced in Milestone 6.
     turn_secret: SecretStr = SecretStr("")
 
+    # --- Rooms (Milestone 3; see docs/data-model.md "Redis keyspace") --------------
+
+    #: How long a room stays alive while waiting for a second peer.
+    room_waiting_ttl_seconds: int = 30 * 60
+    #: Hard cap on a paired room's lifetime, refreshed by activity up to this ceiling.
+    room_paired_ttl_seconds: int = 24 * 60 * 60
+    #: Wrong-code attempts allowed before a room is burned (docs/security.md §1).
+    room_max_join_attempts: int = 5
+    #: Room-token lifetime; bounded by the room's own expiry as well.
+    room_token_ttl_seconds: int = 24 * 60 * 60
+
+    #: STUN servers offered to every peer. A production deployment should run its own
+    #: coturn (added in Milestone 6) rather than depend on a third party's STUN
+    #: (docs/security.md §6, "Privacy").
+    stun_servers: list[str] = Field(default_factory=lambda: ["stun:stun.l.google.com:19302"])
+
+    # --- Rate limits (docs/security.md §6) ------------------------------------------
+
+    rate_limit_create_room_per_hour: int = 20
+    rate_limit_join_per_minute: int = 10
+    rate_limit_join_per_nameplate_per_minute: int = 20
+
     @model_validator(mode="after")
     def _validate_secrets_outside_test(self) -> "Settings":
         if self.env == "test":
