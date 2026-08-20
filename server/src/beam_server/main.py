@@ -15,6 +15,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from beam_server.api.health import router as health_router
+from beam_server.api.ice import router as ice_router
+from beam_server.api.rooms import router as rooms_router
 from beam_server.config import Settings, get_settings
 from beam_server.errors import register_exception_handlers
 from beam_server.logging import configure_logging
@@ -60,6 +62,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router, prefix="/api/v1")
     # Also exposed unprefixed for container/orchestrator health checks.
     app.include_router(health_router)
+    app.include_router(rooms_router, prefix="/api/v1")
+    app.include_router(ice_router, prefix="/api/v1")
 
     return app
 
