@@ -71,6 +71,23 @@ class Settings(BaseSettings):
     rate_limit_join_per_minute: int = 10
     rate_limit_join_per_nameplate_per_minute: int = 20
 
+    # --- Signaling WebSocket (Milestone 4; see docs/protocol.md §3) ------------------
+
+    #: How long a client has to send `hello` after connecting.
+    ws_hello_timeout_seconds: float = 5.0
+    #: How long a disconnected peer's slot is held before the other peer is told
+    #: they left for good (docs/protocol.md §3, "Connection lifecycle").
+    ws_reconnect_grace_seconds: float = 30.0
+    #: Token-bucket message rate limit per connection.
+    ws_message_rate_per_second: float = 20.0
+    ws_message_burst: int = 60
+    #: Caps runaway ICE candidate spam within a single session.
+    ws_max_ice_candidates_per_session: int = 200
+    #: Passed to uvicorn at startup (see server/Dockerfile's CMD); the ASGI server
+    #: owns the actual WebSocket ping/pong control frames, not the application.
+    ws_ping_interval_seconds: int = 20
+    ws_ping_timeout_seconds: int = 45
+
     @model_validator(mode="after")
     def _validate_secrets_outside_test(self) -> "Settings":
         if self.env == "test":

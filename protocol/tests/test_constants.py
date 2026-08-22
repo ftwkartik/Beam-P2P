@@ -9,6 +9,14 @@ from beam_protocol.constants import (
     MAX_ICE_CANDIDATE_BYTES,
     MAX_SDP_BYTES,
     MAX_SIGNALING_MESSAGE_BYTES,
+    WS_CLOSE_HELLO_TIMEOUT,
+    WS_CLOSE_MALFORMED_MESSAGE,
+    WS_CLOSE_MESSAGE_TOO_LARGE,
+    WS_CLOSE_ORIGIN_NOT_ALLOWED,
+    WS_CLOSE_RATE_LIMITED,
+    WS_CLOSE_ROOM_NOT_FOUND,
+    WS_CLOSE_SESSION_REPLACED,
+    WS_CLOSE_UNAUTHORIZED,
 )
 
 
@@ -30,3 +38,20 @@ def test_block_size_is_a_multiple_of_frame_payload_size() -> None:
 def test_size_limits_are_sane_and_ordered() -> None:
     assert 0 < MAX_ICE_CANDIDATE_BYTES < MAX_SDP_BYTES < MAX_SIGNALING_MESSAGE_BYTES
     assert FRAME_HEADER_SIZE == 16
+
+
+def test_ws_close_codes_are_unique_and_in_the_application_range() -> None:
+    codes = {
+        WS_CLOSE_MALFORMED_MESSAGE,
+        WS_CLOSE_UNAUTHORIZED,
+        WS_CLOSE_ORIGIN_NOT_ALLOWED,
+        WS_CLOSE_ROOM_NOT_FOUND,
+        WS_CLOSE_HELLO_TIMEOUT,
+        WS_CLOSE_SESSION_REPLACED,
+        WS_CLOSE_MESSAGE_TOO_LARGE,
+        WS_CLOSE_RATE_LIMITED,
+    }
+    assert len(codes) == 8
+    # RFC 6455 reserves 3000-4999 for libraries/frameworks/applications; ours are
+    # deliberately >= 4400 to stay clear of any framework's own codes in that range.
+    assert all(4400 <= code <= 4999 for code in codes)

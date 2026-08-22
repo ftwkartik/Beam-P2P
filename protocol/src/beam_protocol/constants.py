@@ -32,3 +32,16 @@ FRAME_MAGIC: bytes = b"\x42\x4d"
 
 #: Binary frame format version, carried in every frame header.
 FRAME_VERSION: int = 1
+
+# --- Signaling WebSocket close codes (docs/protocol.md §3, "Close codes") ----------
+# 1000-2999 are reserved by RFC 6455; application close codes start at 4000.
+
+WS_CLOSE_MALFORMED_MESSAGE: int = 4400
+WS_CLOSE_UNAUTHORIZED: int = 4401
+WS_CLOSE_ORIGIN_NOT_ALLOWED: int = 4403
+WS_CLOSE_ROOM_NOT_FOUND: int = 4404
+WS_CLOSE_HELLO_TIMEOUT: int = 4408
+#: The same peer ID connected again; this (now stale) connection is being replaced.
+WS_CLOSE_SESSION_REPLACED: int = 4409
+WS_CLOSE_MESSAGE_TOO_LARGE: int = 4413
+WS_CLOSE_RATE_LIMITED: int = 4429

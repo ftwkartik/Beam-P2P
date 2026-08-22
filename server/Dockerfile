@@ -52,4 +52,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)" || exit 1
 
-CMD ["uvicorn", "beam_server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --ws-ping-interval/--ws-ping-timeout implement the heartbeat in docs/protocol.md §3:
+# uvicorn's websockets implementation owns the actual ping/pong control frames, not the
+# application (see beam_server.config.Settings.ws_ping_interval_seconds, which these
+# should track if ever changed).
+CMD ["uvicorn", "beam_server.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--ws-ping-interval", "20", "--ws-ping-timeout", "45"]
