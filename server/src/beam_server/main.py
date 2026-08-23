@@ -7,6 +7,7 @@ build fresh, independently configured instances (see server/tests/conftest.py).
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -21,7 +22,9 @@ from beam_server.config import Settings, get_settings
 from beam_server.errors import register_exception_handlers
 from beam_server.logging import configure_logging
 from beam_server.observability.middleware import RequestContextMiddleware
+from beam_server.services.signaling import SignalingHub
 from beam_server.store.redis import close_redis_client, create_redis_client
+from beam_server.ws.endpoint import router as ws_router
 
 logger = structlog.get_logger(__name__)
 
@@ -47,6 +50,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    # One hub and one instance ID per process, for the lifetime of the app (not
+    # per-request): the hub holds live WebSocket references, which only make sense
+    # scoped to this process (docs/architecture.md §5, "Scaling model").
+    app.state.signaling_hub = SignalingHub()
+    app.state.instance_id = uuid.uuid4().hex
 
     app.add_middleware(
         CORSMiddleware,
@@ -64,6 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(rooms_router, prefix="/api/v1")
     app.include_router(ice_router, prefix="/api/v1")
+    app.include_router(ws_router)
 
     return app
 
