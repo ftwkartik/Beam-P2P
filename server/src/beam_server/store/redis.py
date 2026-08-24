@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator
 from typing import cast
 
 import redis.asyncio as redis
-from fastapi import Request
+from starlette.requests import HTTPConnection
 
 
 def create_redis_client(redis_url: str) -> redis.Redis:
@@ -23,6 +23,11 @@ async def close_redis_client(client: redis.Redis) -> None:
     await client.aclose()
 
 
-async def get_redis(request: Request) -> AsyncIterator[redis.Redis]:
-    """FastAPI dependency yielding the app-wide Redis client."""
-    yield cast(redis.Redis, request.app.state.redis)
+async def get_redis(connection: HTTPConnection) -> AsyncIterator[redis.Redis]:
+    """FastAPI dependency yielding the app-wide Redis client.
+
+    Typed as `HTTPConnection` (Starlette's common base for `Request` and `WebSocket`)
+    rather than `Request`, so the same dependency works for both HTTP routes and the
+    `/ws` signaling endpoint -- FastAPI resolves it to whichever the route actually is.
+    """
+    yield cast(redis.Redis, connection.app.state.redis)
