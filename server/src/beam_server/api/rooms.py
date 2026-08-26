@@ -15,7 +15,14 @@ from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, Field
 
 from beam_server.config import Settings, get_settings
-from beam_server.errors import RateLimitedError, UnauthorizedError
+from beam_server.errors import (
+    InvalidRoomCodeError,
+    RateLimitedError,
+    RoomBurnedError,
+    RoomFullError,
+    UnauthorizedError,
+)
+from beam_server.observability.metrics import room_join_attempts_total, rooms_created_total
 from beam_server.security.client_ip import get_client_ip
 from beam_server.services.rooms import RoomService
 from beam_server.store.rate_limit import RateLimitExceeded, check_rate_limit
@@ -97,6 +104,7 @@ async def create_room(
     )
 
     room = await room_service.create_room()
+    rooms_created_total.inc()
     logger.info("room_created", room_id=room.room_id, nameplate=room.nameplate)
     return CreateRoomResponse(
         room_id=room.room_id,
@@ -127,7 +135,18 @@ async def join_room(
     # The per-nameplate limit (docs/data-model.md's `rl:join_nameplate:*` scope) is
     # applied inside the service, once the code has been parsed into a nameplate --
     # it can't be a route-level dependency since the nameplate lives in the body.
-    joined = await room_service.join_room(body.code)
+    try:
+        joined = await room_service.join_room(body.code)
+    except InvalidRoomCodeError:
+        room_join_attempts_total.labels(outcome="invalid_code").inc()
+        raise
+    except RoomFullError:
+        room_join_attempts_total.labels(outcome="room_full").inc()
+        raise
+    except RoomBurnedError:
+        room_join_attempts_total.labels(outcome="room_burned").inc()
+        raise
+    room_join_attempts_total.labels(outcome="joined").inc()
 
     logger.info("room_joined", room_id=joined.room_id)
     return JoinRoomResponse(

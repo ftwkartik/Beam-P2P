@@ -12,6 +12,7 @@ dependencies = [
     "structlog>=24.4.0",
     "redis>=5.2.0",
     "pyjwt>=2.9.0",
+    "prometheus-client>=0.21.0",
 ]
 
 [tool.uv.sources]
