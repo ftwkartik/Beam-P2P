@@ -1,10 +1,12 @@
 """In-process signaling relay: who's connected to this instance right now, and
 delivering messages to them (docs/architecture.md §4, "Key flows").
 
-This is intentionally scoped to *this process*. Milestone 5 adds Redis pub/sub so an
-instance without a peer's socket can still reach them on whichever instance does; until
-then, relay only works between two peers connected to the same (single) instance,
-which is exactly Milestone 4's stated scope.
+This is intentionally scoped to *this process* -- it has no idea whether a given peer
+ID belongs to some other instance at all. `store.pubsub.RoomPubSub` is the piece that
+makes cross-instance delivery work (Milestone 5): every peer-to-peer message is
+published to the room's Redis channel regardless of where the addressee actually is,
+and each subscribed instance's pub/sub listener calls back into its own hub via
+`send_text` only when the addressee turns out to be local.
 """
 
 from __future__ import annotations
@@ -51,15 +53,25 @@ class SignalingHub:
         del self._sessions[peer_id]
 
     async def send(self, peer_id: str, message: BaseModel) -> bool:
-        """Best-effort delivery to a locally connected peer. Returns whether it was
-        (as far as we can tell) actually sent -- the peer not being connected here, or
-        the socket having just died, are both ordinary and not logged as errors.
+        """Serialize `message` and deliver it to a locally connected peer."""
+        return await self.send_text(peer_id, message.model_dump_json(by_alias=True))
+
+    async def send_text(self, peer_id: str, text: str) -> bool:
+        """Best-effort delivery of a raw, already-serialized message to a locally
+        connected peer. This is what `store.pubsub.RoomPubSub` calls after receiving a
+        message over Redis addressed to a peer that turns out to live on this
+        instance -- the payload has already been serialized once by whichever instance
+        published it, so there's no need to decode and re-encode it here.
+
+        Returns whether it was (as far as we can tell) actually sent -- the peer not
+        being connected here, or the socket having just died, are both ordinary and
+        not logged as errors.
         """
         session = self._sessions.get(peer_id)
         if session is None:
             return False
         try:
-            await session.websocket.send_text(message.model_dump_json(by_alias=True))
+            await session.websocket.send_text(text)
         except (RuntimeError, ConnectionError) as exc:
             logger.debug("signaling_send_failed", peer_id=peer_id, error=str(exc))
             return False
