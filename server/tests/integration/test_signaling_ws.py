@@ -67,7 +67,16 @@ class ClientFactory:
 
     def __call__(self, **settings_overrides: object) -> TestClient:
         settings = _settings(**settings_overrides)
-        app: FastAPI = create_app(settings=settings)
+        app: FastAPI = create_app(
+            settings=settings,
+            # Without this, the app's pub/sub relay (created in the lifespan; see
+            # beam_server.main) would default to a real redis.asyncio client pointed
+            # at Settings.redis_url and fail to connect -- only the per-request
+            # get_redis dependency below is overridden by default.
+            redis_client_factory=lambda _url: fakeredis.aioredis.FakeRedis(
+                server=self.fake_server, decode_responses=True
+            ),
+        )
         app.dependency_overrides[get_settings] = lambda: settings
 
         async def _override_get_redis() -> AsyncIterator[redis.Redis]:
@@ -136,6 +145,34 @@ def _simulate_join(make_client_fn: ClientFactory, room: dict) -> dict:
         "token": token,
         "peer_id": peer_id,
     }
+
+
+async def _get_presence(make_client_fn: ClientFactory, room_id: str, peer_id: str) -> str | None:
+    """Read a peer's presence state directly from the shared fake store."""
+    client = fakeredis.aioredis.FakeRedis(server=make_client_fn.fake_server, decode_responses=True)
+    try:
+        return await client.hget(f"room:{room_id}:peer:{peer_id}", "state")
+    finally:
+        await client.aclose()
+
+
+def _set_presence_online(make_client_fn: ClientFactory, room_id: str, peer_id: str) -> None:
+    """Write a peer's presence to "online" directly, the way `PresenceRepository.
+    set_online` (called from a real connect flow, possibly on a different instance)
+    would -- used to simulate a cross-instance reconnect without a second live
+    connection (see `TestMultiInstance`'s note on why).
+    """
+
+    async def _apply() -> None:
+        client = fakeredis.aioredis.FakeRedis(
+            server=make_client_fn.fake_server, decode_responses=True
+        )
+        try:
+            await client.hset(f"room:{room_id}:peer:{peer_id}", "state", "online")
+        finally:
+            await client.aclose()
+
+    asyncio.run(_apply())
 
 
 def _hello(token: str, *, kind: str = "web", version: str = "1.0.0") -> dict:
@@ -490,3 +527,129 @@ class TestLimits:
                 ws.send_json(_candidate_signal(str(i)))
             ws.receive_json()
         assert exc_info.value.code == 4400
+
+
+class TestMultiInstance:
+    """The actual Milestone 5 property: two peers of the same room, each connected to
+    a *different* server instance, can still signal each other. `make_client()`
+    already builds a fresh `create_app()` (its own hub, pub/sub task and instance ID)
+    per call, sharing only the fake Redis *server* between them -- exactly analogous to
+    two real processes sharing one Redis.
+    """
+
+    def test_signal_relays_across_two_instances(self, make_client: ClientFactory) -> None:
+        instance_a = make_client()
+        instance_b = make_client()
+
+        room = _create_room(instance_a)
+        joined = _simulate_join(make_client, room)
+
+        with instance_a.websocket_connect("/ws") as creator_ws:
+            creator_ws.send_json(_hello(room["token"]))
+            creator_welcome = creator_ws.receive_json()
+            assert creator_welcome["peers"] == []
+
+            with instance_b.websocket_connect("/ws") as joiner_ws:
+                joiner_ws.send_json(_hello(joined["token"]))
+                joiner_welcome = joiner_ws.receive_json()
+                # Presence is Redis-backed and shared, so instance B correctly reports
+                # the creator as online even though B has never seen that connection.
+                assert joiner_welcome["peers"] == [
+                    {
+                        "peer_id": creator_welcome["peer_id"],
+                        "role": "creator",
+                        "state": "online",
+                    }
+                ]
+
+                # Relayed instance B -> A over Redis pub/sub.
+                peer_joined = creator_ws.receive_json()
+                assert peer_joined == {
+                    "type": "peer_joined",
+                    "peer_id": joiner_welcome["peer_id"],
+                    "role": "joiner",
+                }
+
+                joiner_ws.send_json(_candidate_signal("cross-instance"))
+                relayed = creator_ws.receive_json()
+                assert relayed["type"] == "signal"
+                assert relayed["from"] == joiner_welcome["peer_id"]
+                assert relayed["data"]["candidate"]["candidate"] == "cross-instance"
+
+                # And the other direction, A -> B.
+                creator_ws.send_json(_candidate_signal("back-to-b"))
+                relayed_back = joiner_ws.receive_json()
+                assert relayed_back["from"] == creator_welcome["peer_id"]
+                assert relayed_back["data"]["candidate"]["candidate"] == "back-to-b"
+
+    def test_leave_relays_across_two_instances(self, make_client: ClientFactory) -> None:
+        instance_a = make_client()
+        instance_b = make_client()
+
+        room = _create_room(instance_a)
+        joined = _simulate_join(make_client, room)
+
+        with instance_a.websocket_connect("/ws") as creator_ws:
+            creator_ws.send_json(_hello(room["token"]))
+            creator_ws.receive_json()  # welcome
+
+            with instance_b.websocket_connect("/ws") as joiner_ws:
+                joiner_ws.send_json(_hello(joined["token"]))
+                joiner_welcome = joiner_ws.receive_json()
+                creator_ws.receive_json()  # peer_joined
+
+                joiner_ws.send_json({"type": "leave"})
+                with pytest.raises(WebSocketDisconnect):
+                    joiner_ws.receive_json()
+
+            left = creator_ws.receive_json()
+            assert left == {
+                "type": "peer_left",
+                "peer_id": joiner_welcome["peer_id"],
+                "reason": "left",
+            }
+
+    # A genuine cross-instance reconnect -- disconnect from instance B, reconnect on
+    # instance A -- is *not* exercised here as a live two-TestClient scenario. Doing
+    # so reliably triggered an indefinite hang in this exact test harness (two
+    # Starlette TestClients, each on its own background thread, one of them handling
+    # a disconnect at the moment the other reconnects); it reproduced consistently but
+    # its root cause was not conclusively identified even after ruling out this
+    # project's own subscribe/unsubscribe logic (isolated repros of that in plain
+    # asyncio, without TestClient, behaved correctly). Rather than leave a test that
+    # hangs CI, the property this would have covered -- the stale-reconnect-timer
+    # correctness fix in ws/endpoint.py's `_on_reconnect_timeout` -- is instead
+    # verified below by directly manipulating presence the way a *different*
+    # instance's own connect flow would, which exercises the same code path without
+    # needing a second live TestClient. It was also confirmed manually end to end
+    # against two real `uvicorn` processes sharing one real Redis (see the Milestone 5
+    # commit message).
+    def test_stale_reconnect_timer_backs_off_once_presence_shows_online(
+        self, make_client: ClientFactory
+    ) -> None:
+        client = make_client(ws_reconnect_grace_seconds=0.3)
+        room = _create_room(client)
+        joined = _simulate_join(make_client, room)
+
+        with client.websocket_connect("/ws") as creator_ws:
+            creator_ws.send_json(_hello(room["token"]))
+            creator_ws.receive_json()  # welcome
+
+            with client.websocket_connect("/ws") as joiner_ws:
+                joiner_ws.send_json(_hello(joined["token"]))
+                joiner_ws.receive_json()  # welcome
+                creator_ws.receive_json()  # peer_joined
+            # joiner disconnects; this instance schedules its own reconnect timer.
+
+            creator_ws.receive_json()  # peer_reconnecting
+
+            # Simulate a *different* instance's connect flow having already run for
+            # this same peer (PresenceRepository.set_online) -- exactly what a real
+            # cross-instance reconnect would have produced by this point.
+            _set_presence_online(make_client, room["room_id"], joined["peer_id"])
+
+            # Wait past the grace period. The stale timer fires now, but must see
+            # (via shared presence) that the peer is back and do nothing.
+            time.sleep(0.6)
+            presence = asyncio.run(_get_presence(make_client, room["room_id"], joined["peer_id"]))
+            assert presence == "online"
