@@ -50,8 +50,15 @@ def test_settings() -> Settings:
 
 @pytest.fixture
 def app(fake_redis: redis.Redis, test_settings: Settings) -> FastAPI:
-    """A FastAPI app with Redis and Settings overridden for isolated testing."""
-    application = create_app(settings=test_settings)
+    """A FastAPI app with Redis and Settings overridden for isolated testing.
+
+    `redis_client_factory` points the app's pub/sub relay (see beam_server.main's
+    lifespan) at the same fake Redis as the per-request `get_redis` override below,
+    rather than the real client `create_app` would otherwise build from
+    `test_settings.redis_url` -- these tests run over an in-process ASGI transport
+    (not a separate thread/loop), so reusing one object for both is safe here.
+    """
+    application = create_app(settings=test_settings, redis_client_factory=lambda _url: fake_redis)
 
     async def _override_get_redis() -> AsyncIterator[redis.Redis]:
         yield fake_redis
