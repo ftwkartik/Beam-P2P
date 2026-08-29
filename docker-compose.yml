@@ -1,9 +1,12 @@
 # Local development / demo stack. `docker compose up --build` after
 # `cp .env.example .env && ./scripts/gen_secrets.sh` (see README.md).
 #
-# Milestone 1 scope: server + web + redis. TURN (coturn) and a second server replica
-# arrive in Milestones 5-6; Postgres only if the accounts/history option in Milestone
-# 11 is taken (see docs/roadmap.md).
+# `server` runs 2 replicas by default (Milestone 5: no server holds any state a peer's
+# messages depend on beyond Redis, so any instance can serve any peer -- see
+# docs/architecture.md §5 and docs/adr/002-redis-state-and-pubsub.md). nginx is the
+# only public entry point to it; scale further with `docker compose up --scale
+# server=N`. TURN (coturn) arrives in Milestone 6; Postgres only if the
+# accounts/history option in Milestone 11 is taken (see docs/roadmap.md).
 
 services:
   redis:
@@ -35,8 +38,14 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
-    ports:
-      - "8000:8000"
+    # No fixed host port: two replicas can't both bind the same one, and nginx (below)
+    # is the intended public entry point anyway. Reach a specific replica directly for
+    # debugging with `docker compose exec server-N curl ...` or a one-off port
+    # mapping override.
+    expose:
+      - "8000"
+    deploy:
+      replicas: 2
 
   web:
     build:
