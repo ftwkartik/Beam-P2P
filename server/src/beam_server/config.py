@@ -65,6 +65,20 @@ class Settings(BaseSettings):
     #: (docs/security.md §6, "Privacy").
     stun_servers: list[str] = Field(default_factory=lambda: ["stun:stun.l.google.com:19302"])
 
+    # --- TURN (Milestone 6; docs/adr/004-turn-coturn-ephemeral-credentials.md) ------
+
+    #: coturn URLs handed to clients alongside minted credentials. Empty by default
+    #: (STUN-only) so a deployment without coturn configured doesn't advertise dead
+    #: TURN endpoints; compose sets this to the bundled coturn service.
+    turn_urls: list[str] = Field(default_factory=list)
+    #: How long a minted TURN credential remains valid (docs/security.md §3: "valid
+    #: for 1 hour").
+    turn_credential_ttl_seconds: int = 60 * 60
+    #: Per-room cap on ICE-server requests, since each one mints a fresh TURN
+    #: credential (docs/security.md §3, "issued only to holders of a valid room
+    #: token (rate limited per room)").
+    rate_limit_ice_servers_per_room_per_minute: int = 10
+
     # --- Rate limits (docs/security.md §6) ------------------------------------------
 
     rate_limit_create_room_per_hour: int = 20
