@@ -56,7 +56,7 @@ def extract_bearer_token(authorization: str | None) -> str:
     return authorization.split(" ", 1)[1].strip()
 
 
-async def _enforce_rate_limit(
+async def enforce_rate_limit(
     redis_client: redis.Redis, *, scope: str, key: str, limit: int, window_seconds: int
 ) -> None:
     try:
@@ -95,7 +95,7 @@ async def create_room(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> CreateRoomResponse:
     client_ip = get_client_ip(request, settings.trusted_proxies)
-    await _enforce_rate_limit(
+    await enforce_rate_limit(
         redis_client,
         scope="create_ip",
         key=client_ip,
@@ -124,7 +124,7 @@ async def join_room(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> JoinRoomResponse:
     client_ip = get_client_ip(request, settings.trusted_proxies)
-    await _enforce_rate_limit(
+    await enforce_rate_limit(
         redis_client,
         scope="join_ip",
         key=client_ip,
