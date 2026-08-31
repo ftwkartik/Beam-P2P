@@ -54,3 +54,9 @@ signal_messages_relayed_total = Counter(
     "Signal messages published for relay to another peer.",
     registry=registry,
 )
+
+turn_credentials_issued_total = Counter(
+    "beam_turn_credentials_issued_total",
+    "Ephemeral TURN credentials minted via GET /rooms/{room_id}/ice-servers.",
+    registry=registry,
+)
