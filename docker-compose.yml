@@ -5,7 +5,10 @@
 # messages depend on beyond Redis, so any instance can serve any peer -- see
 # docs/architecture.md §5 and docs/adr/002-redis-state-and-pubsub.md). nginx is the
 # only public entry point to it; scale further with `docker compose up --scale
-# server=N`. TURN (coturn) arrives in Milestone 6; Postgres only if the
+# server=N`. `coturn` provides TURN with ephemeral HMAC credentials the API mints
+# (Milestone 6; docs/adr/004-turn-coturn-ephemeral-credentials.md) using
+# infra/coturn/turnserver.conf, a dev-only config -- see that file and
+# turnserver.prod.conf for what changes in production. Postgres only if the
 # accounts/history option in Milestone 11 is taken (see docs/roadmap.md).
 
 services:
@@ -21,6 +24,22 @@ services:
     volumes:
       - redis-data:/data
 
+  coturn:
+    image: coturn/coturn:4.6.2-alpine
+    restart: unless-stopped
+    # `docker compose` expands ${TURN_SECRET} itself, at compose-file parse time, by
+    # reading the project's root .env -- the same file the server container gets its
+    # copy of TURN_SECRET from (see server's env_file below). Passing it as a
+    # command-line flag (which coturn lets override a file directive) means the real
+    # secret is never written into turnserver.conf, an image layer, or git.
+    command: ["-c", "/etc/coturn/turnserver.conf", "--static-auth-secret=${TURN_SECRET}"]
+    volumes:
+      - ./infra/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-49200:49160-49200/udp"
+
   server:
     build:
       context: .
@@ -29,9 +48,12 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379/0
+      TURN_URLS: '["turn:localhost:3478?transport=udp","turn:localhost:3478?transport=tcp"]'
     depends_on:
       redis:
         condition: service_healthy
+      coturn:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=2)"]
       interval: 10s
