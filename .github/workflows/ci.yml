@@ -50,9 +50,10 @@ jobs:
       - name: Test (pytest)
         run: uv run pytest -v
 
-      - name: Protocol schema is not stale
+      - name: Protocol schema and shared data are not stale
         run: |
           uv run python -m beam_protocol.export_schema
+          uv run python -m beam_protocol.export_data
           git diff --exit-code -- protocol/schema
 
   web:
@@ -79,7 +80,7 @@ jobs:
       - name: Type check (tsc)
         run: npm run typecheck
 
-      - name: Generated protocol types are not stale
+      - name: Generated protocol types and shared data are not stale
         run: npm run codegen:check
 
       - name: Test (vitest)
