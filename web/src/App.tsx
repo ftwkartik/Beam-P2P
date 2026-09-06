@@ -1,19 +1,50 @@
+import { useCallback, useEffect, useState } from "react";
+
+import HomePage from "./pages/HomePage";
+import RoomPage from "./pages/RoomPage";
+
 /**
- * Placeholder root component.
- *
- * The real UI (create/join rooms, connection status, SAS display, the transfer
- * engine) is built in Milestones 7-9 (see docs/roadmap.md). This page exists so the
- * Milestone 1 skeleton is a real, buildable, testable app rather than an unmodified
- * template — see docs/reference-analysis.md's critique of [redacted] shipping the
- * untouched Vite README.
+ * Manual two-page routing (docs/adr/007-react-typescript-client.md's "Redux Toolkit:
+ * heavier than needed" reasoning applies just as well to a router library here -- the
+ * whole app is `/` and `/r#<code>`, the share-link route (docs/protocol.md §1: the
+ * code lives in the URL fragment so it never reaches server or proxy logs).
  */
+interface Route {
+  path: string;
+  hash: string;
+}
+
+function currentRoute(): Route {
+  return { path: window.location.pathname, hash: window.location.hash.replace(/^#/, "") };
+}
+
 function App() {
-  return (
-    <main>
-      <h1>Beam</h1>
-      <p>Send files directly between devices. The interface is coming soon.</p>
-    </main>
-  );
+  const [route, setRoute] = useState<Route>(currentRoute);
+
+  useEffect(() => {
+    const onNavigate = () => setRoute(currentRoute());
+    window.addEventListener("popstate", onNavigate);
+    window.addEventListener("hashchange", onNavigate);
+    return () => {
+      window.removeEventListener("popstate", onNavigate);
+      window.removeEventListener("hashchange", onNavigate);
+    };
+  }, []);
+
+  const goToRoom = useCallback((code: string) => {
+    window.history.pushState(null, "", `/r#${code}`);
+    setRoute(currentRoute());
+  }, []);
+
+  const goHome = useCallback(() => {
+    window.history.pushState(null, "", "/");
+    setRoute(currentRoute());
+  }, []);
+
+  if (route.path === "/r") {
+    return <RoomPage joinCode={route.hash || null} onLeave={goHome} />;
+  }
+  return <HomePage onRoomReady={goToRoom} />;
 }
 
 export default App;
