@@ -15,6 +15,8 @@ import type { IceSignal, SdpSignal } from "../protocol/generated/server-message"
 /** Fixed IDs so both sides declare the same negotiated channels (docs/protocol.md §4). */
 const CONTROL_CHANNEL_ID = 0;
 const DATA_CHANNEL_ID = 1;
+/** docs/protocol.md §4.2: "resumes on bufferedamountlow (threshold 1 MiB)". */
+const DATA_CHANNEL_LOW_WATERMARK_BYTES = 1024 * 1024;
 
 const FINGERPRINT_RE = /^a=fingerprint:(sha-256 [0-9A-Fa-f:]+)\r?$/m;
 
@@ -66,6 +68,10 @@ export class PeerConnection {
       id: DATA_CHANNEL_ID,
       ordered: false,
     });
+    // The transfer sender (engine/transfer/sender.ts) pauses above a 4 MiB
+    // bufferedAmount and waits for this channel's own `bufferedamountlow` event to
+    // resume (docs/protocol.md §4.2); that event only fires at this threshold.
+    this.dataChannel.bufferedAmountLowThreshold = DATA_CHANNEL_LOW_WATERMARK_BYTES;
 
     this.controlChannel.addEventListener("open", () => {
       this.options.onControlChannelOpen?.(this.controlChannel);
