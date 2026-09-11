@@ -4,7 +4,7 @@ import type { PeerMessage } from "../../protocol/generated/peer-message";
 import { BlockBitmap } from "./bitmap";
 import { unpackFrame } from "./framing";
 import { hashBytesHex } from "./hashing";
-import type { ControlChannelLike, DataChannelLike } from "./sender";
+import type { ControlChannelLike, DataChannelLike } from "./channels";
 import { TransferSender } from "./sender";
 
 class FakeControlChannel implements ControlChannelLike {

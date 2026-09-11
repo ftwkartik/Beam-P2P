@@ -9,6 +9,7 @@ import type { AcceptMessage, FileOffer, NackMessage, PeerMessage } from "../../p
 import { BlockBitmap } from "./bitmap";
 import { createFrame, packFrame } from "./framing";
 import { deriveFileRootHash, hashBytes, hashBytesHex } from "./hashing";
+import type { ControlChannelLike, DataChannelLike } from "./channels";
 import { DEFAULT_BLOCK_SIZE, buildManifest } from "./manifest";
 
 /** docs/protocol.md §4.2: the sender pauses above this and resumes at the data
@@ -32,17 +33,6 @@ export interface SenderProgress {
   fileSize: number;
   totalBytesSent: number;
   totalBytes: number;
-}
-
-export interface ControlChannelLike {
-  send(data: string): void;
-}
-
-export interface DataChannelLike {
-  send(data: Uint8Array): void;
-  readonly bufferedAmount: number;
-  addEventListener(type: "bufferedamountlow", listener: () => void): void;
-  removeEventListener(type: "bufferedamountlow", listener: () => void): void;
 }
 
 export interface TransferSenderOptions {
