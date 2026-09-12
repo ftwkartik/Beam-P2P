@@ -72,6 +72,10 @@ export class PeerConnection {
     // bufferedAmount and waits for this channel's own `bufferedamountlow` event to
     // resume (docs/protocol.md §4.2); that event only fires at this threshold.
     this.dataChannel.bufferedAmountLowThreshold = DATA_CHANNEL_LOW_WATERMARK_BYTES;
+    // Frames (engine/transfer/framing.ts) are parsed synchronously from an ArrayBuffer;
+    // the default "blob" binaryType would need an extra async Blob.arrayBuffer() hop
+    // on every incoming frame.
+    this.dataChannel.binaryType = "arraybuffer";
 
     this.controlChannel.addEventListener("open", () => {
       this.options.onControlChannelOpen?.(this.controlChannel);

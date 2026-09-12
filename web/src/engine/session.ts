@@ -9,6 +9,20 @@ import * as realApi from "./api";
 import { PeerConnection, type PeerConnectionOptions } from "./peer";
 import { deriveSas, type SasSymbol } from "./sas";
 import { SignalingClient, type SignalingClientOptions, type SignalingStatus } from "./signaling";
+import { MemoryStorage } from "./storage/memory-storage";
+import { OpfsStorage } from "./storage/opfs-storage";
+import type { TransferStorage } from "./storage/types";
+import type {
+  FileReadyResult,
+  OfferedManifest,
+  ReceiverPhase,
+  ReceiverProgress,
+} from "./transfer/receiver";
+import { TransferReceiver } from "./transfer/receiver";
+import type { DataChannelLike } from "./transfer/channels";
+import type { SenderPhase, SenderProgress } from "./transfer/sender";
+import { TransferSender } from "./transfer/sender";
+import type { PeerMessage } from "../protocol/generated/peer-message";
 import type {
   PeerInfo,
   PeerJoinedMessage,
@@ -37,6 +51,18 @@ export interface RoomInfo {
   peerId: string;
 }
 
+export interface OutgoingTransferState {
+  phase: SenderPhase;
+  progress: SenderProgress | null;
+  error: string | null;
+}
+
+export interface IncomingTransferState {
+  phase: ReceiverPhase;
+  progress: ReceiverProgress | null;
+  error: string | null;
+}
+
 export interface SessionState {
   phase: SessionPhase;
   error: string | null;
@@ -44,6 +70,12 @@ export interface SessionState {
   otherPeer: PeerInfo | null;
   sas: SasSymbol[] | null;
   signalingStatus: SignalingStatus;
+  outgoingTransfer: OutgoingTransferState | null;
+  /** A manifest the other peer offered, awaiting accept()/decline(). */
+  incomingOffer: OfferedManifest | null;
+  incomingTransfer: IncomingTransferState | null;
+  /** Files the receiver has fully verified and can now be saved. */
+  readyFiles: FileReadyResult[];
 }
 
 const CLIENT_VERSION = "0.1.0";
@@ -60,6 +92,7 @@ export interface BeamSessionOptions {
   api?: ApiClient;
   signalingFactory?: (options: SignalingClientOptions) => SignalingClient;
   peerConnectionFactory?: (options: PeerConnectionOptions) => PeerConnection;
+  storageFactory?: (transferId: string) => TransferStorage;
 }
 
 function initialState(): SessionState {
@@ -70,13 +103,27 @@ function initialState(): SessionState {
     otherPeer: null,
     sas: null,
     signalingStatus: "closed",
+    outgoingTransfer: null,
+    incomingOffer: null,
+    incomingTransfer: null,
+    readyFiles: [],
   };
+}
+
+/** OPFS sync access handles are the common case in modern browsers; MemoryStorage is
+ * the documented fallback for the rest (docs/adr/006-receiver-storage-opfs.md). This
+ * checks for OPFS root access as a proxy for full support rather than actually trying
+ * to open a sync access handle, which needs a round trip to the worker to find out. */
+function defaultStorageFactory(transferId: string): TransferStorage {
+  const opfsAvailable = typeof navigator !== "undefined" && typeof navigator.storage?.getDirectory === "function";
+  return opfsAvailable ? new OpfsStorage(transferId) : new MemoryStorage();
 }
 
 export class BeamSession {
   private readonly api: ApiClient;
   private readonly signalingFactory: (options: SignalingClientOptions) => SignalingClient;
   private readonly peerConnectionFactory: (options: PeerConnectionOptions) => PeerConnection;
+  private readonly storageFactory: (transferId: string) => TransferStorage;
 
   private state: SessionState = initialState();
   private readonly listeners = new Set<(state: SessionState) => void>();
@@ -87,10 +134,14 @@ export class BeamSession {
   private polite = false;
   private iceServers: RTCIceServer[] = [];
 
+  private sender: TransferSender | null = null;
+  private receiver: TransferReceiver | null = null;
+
   constructor(options: BeamSessionOptions = {}) {
     this.api = options.api ?? realApi;
     this.signalingFactory = options.signalingFactory ?? ((o) => new SignalingClient(o));
     this.peerConnectionFactory = options.peerConnectionFactory ?? ((o) => new PeerConnection(o));
+    this.storageFactory = options.storageFactory ?? defaultStorageFactory;
   }
 
   getState(): SessionState {
@@ -143,6 +194,8 @@ export class BeamSession {
     this.peerConnection?.close();
     this.signaling = null;
     this.peerConnection = null;
+    this.sender = null;
+    this.receiver = null;
     this.token = null;
     this.setState(initialState());
   }
@@ -209,11 +262,15 @@ export class BeamSession {
     if (this.state.otherPeer?.peer_id !== message.peer_id) return;
     this.peerConnection?.close();
     this.peerConnection = null;
+    this.sender = null;
+    this.receiver = null;
     this.setState({ otherPeer: null, sas: null, phase: "peer_left" });
   }
 
   private setupPeerConnection(): void {
     this.peerConnection?.close();
+    this.sender = null;
+    this.receiver = null;
     this.peerConnection = this.peerConnectionFactory({
       polite: this.polite,
       iceServers: this.iceServers,
@@ -222,6 +279,80 @@ export class BeamSession {
         if (rtcState === "connected") void this.handleConnected();
       },
     });
+
+    this.peerConnection.controlChannel.addEventListener("message", (event: MessageEvent<string>) => {
+      try {
+        this.handleIncomingControlMessage(JSON.parse(event.data) as PeerMessage);
+      } catch {
+        // A malformed control message from the peer: nothing to recover, just drop it.
+      }
+    });
+    this.peerConnection.dataChannel.addEventListener("message", (event: MessageEvent<ArrayBuffer>) => {
+      this.receiver?.handleDataFrame(new Uint8Array(event.data));
+    });
+  }
+
+  private handleIncomingControlMessage(message: PeerMessage): void {
+    if (message.type === "offer_files" && this.receiver === null) {
+      this.createReceiver(message.transfer_id);
+    }
+    this.sender?.handleControlMessage(message);
+    this.receiver?.handleControlMessage(message);
+  }
+
+  private createReceiver(transferId: string): void {
+    const receiver = new TransferReceiver({
+      storage: this.storageFactory(transferId),
+      control: this.peerConnection!.controlChannel,
+      onOffer: (manifest) => this.setState({ incomingOffer: manifest }),
+      onPhaseChange: (phase) =>
+        this.setState({ incomingTransfer: { phase, progress: this.state.incomingTransfer?.progress ?? null, error: null } }),
+      onProgress: (progress) =>
+        this.setState({ incomingTransfer: { phase: receiver.getPhase(), progress, error: null } }),
+      onFileReady: (result) => this.setState({ readyFiles: [...this.state.readyFiles, result] }),
+      onError: (error) =>
+        this.setState({
+          incomingTransfer: { phase: receiver.getPhase(), progress: this.state.incomingTransfer?.progress ?? null, error },
+        }),
+    });
+    this.receiver = receiver;
+  }
+
+  /** Offers `files` to the connected peer. Requires an already-connected session. */
+  sendFiles(files: File[]): void {
+    if (!this.peerConnection) return;
+    const sender = new TransferSender({
+      transferId: crypto.randomUUID(),
+      files,
+      control: this.peerConnection.controlChannel,
+      // RTCDataChannel.send is overloaded (string | Blob | ArrayBuffer |
+      // ArrayBufferView); TS's overload-to-single-signature assignability check
+      // doesn't resolve that a Uint8Array argument matches the ArrayBufferView
+      // overload here (the same @types/node/TS TypedArray-generics friction as
+      // elsewhere -- see memory-storage.ts's comment), even though it works at runtime.
+      data: this.peerConnection.dataChannel as unknown as DataChannelLike,
+      onPhaseChange: (phase) =>
+        this.setState({ outgoingTransfer: { phase, progress: this.state.outgoingTransfer?.progress ?? null, error: null } }),
+      onProgress: (progress) =>
+        this.setState({ outgoingTransfer: { phase: sender.getPhase(), progress, error: null } }),
+      onError: (error) =>
+        this.setState({
+          outgoingTransfer: { phase: sender.getPhase(), progress: this.state.outgoingTransfer?.progress ?? null, error },
+        }),
+    });
+    this.sender = sender;
+    sender.start();
+  }
+
+  /** Accepts the pending incoming offer (see `state.incomingOffer`). */
+  acceptIncomingTransfer(): void {
+    this.receiver?.accept();
+    this.setState({ incomingOffer: null });
+  }
+
+  declineIncomingTransfer(reason = "Declined by the recipient."): void {
+    this.receiver?.decline(reason);
+    this.setState({ incomingOffer: null });
   }
 
   private async handleConnected(): Promise<void> {
@@ -236,6 +367,8 @@ export class BeamSession {
   private fail(message: string): void {
     this.signaling?.close();
     this.peerConnection?.close();
+    this.sender = null;
+    this.receiver = null;
     this.setState({ phase: "failed", error: message });
   }
 

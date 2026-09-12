@@ -4,6 +4,8 @@ import type { ApiClient } from "./session";
 import { BeamSession } from "./session";
 import type { PeerConnectionOptions } from "./peer";
 import type { SignalingClientOptions } from "./signaling";
+import { createFrame, packFrame } from "./transfer/framing";
+import { deriveFileRootHash, hashBytes, hashBytesHex } from "./transfer/hashing";
 
 class FakeSignalingClient {
   options: SignalingClientOptions;
@@ -26,10 +28,29 @@ class FakeSignalingClient {
   }
 }
 
+class FakeChannel {
+  send = vi.fn();
+  private listeners: ((event: MessageEvent) => void)[] = [];
+
+  addEventListener(_type: string, listener: (event: MessageEvent) => void): void {
+    this.listeners.push(listener);
+  }
+
+  removeEventListener(_type: string, listener: (event: MessageEvent) => void): void {
+    this.listeners = this.listeners.filter((l) => l !== listener);
+  }
+
+  simulateMessage(data: string | ArrayBuffer): void {
+    for (const listener of [...this.listeners]) listener({ data } as MessageEvent);
+  }
+}
+
 class FakePeerConnection {
   options: PeerConnectionOptions;
   closeSpy = vi.fn();
   handleSignalSpy = vi.fn();
+  controlChannel = new FakeChannel();
+  dataChannel = new FakeChannel();
   fingerprints: { local: string; remote: string } | null = {
     local: "sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB",
     remote: "sha-256 CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD",
@@ -308,5 +329,106 @@ describe("leave", () => {
     expect(signalingInstances[0].closeSpy).toHaveBeenCalledOnce();
     expect(peerInstances[0].closeSpy).toHaveBeenCalledOnce();
     expect(session.getState().phase).toBe("idle");
+  });
+});
+
+async function connectedSession() {
+  const result = buildFakeApi();
+  await result.session.createRoom();
+  result.signalingInstances[0].options.onWelcome?.({
+    type: "welcome",
+    peer_id: "peer-me",
+    room_id: "room-1",
+    role: "creator",
+    polite: false,
+    peers: [
+      { peer_id: "peer-me", role: "creator", state: "online" },
+      { peer_id: "peer-other", role: "joiner", state: "online" },
+    ],
+    expires_at: "2026-01-01T00:00:00Z",
+  });
+  return result;
+}
+
+describe("transfer engine wiring", () => {
+  it("sendFiles offers the manifest over the peer connection's control channel", async () => {
+    const { session, peerInstances } = await connectedSession();
+
+    session.sendFiles([new File(["hello"], "a.txt")]);
+
+    expect(peerInstances[0].controlChannel.send).toHaveBeenCalledWith(
+      expect.stringContaining("offer_files"),
+    );
+  });
+
+  it("surfaces an incoming offer and accepting it replies over the control channel", async () => {
+    const { session, peerInstances } = await connectedSession();
+
+    peerInstances[0].controlChannel.simulateMessage(
+      JSON.stringify({
+        type: "offer_files",
+        transfer_id: "t1",
+        block_size: 4,
+        files: [{ index: 0, path: "a.txt", size: 5, mime: "text/plain", mtime: null }],
+      }),
+    );
+
+    expect(session.getState().incomingOffer).toMatchObject({ transferId: "t1" });
+
+    session.acceptIncomingTransfer();
+
+    expect(session.getState().incomingOffer).toBeNull();
+    expect(peerInstances[0].controlChannel.send).toHaveBeenCalledWith(
+      expect.stringContaining('"accept"'),
+    );
+  });
+
+  it("declining sends a decline message and clears the incoming offer", async () => {
+    const { session, peerInstances } = await connectedSession();
+
+    peerInstances[0].controlChannel.simulateMessage(
+      JSON.stringify({
+        type: "offer_files",
+        transfer_id: "t1",
+        block_size: 4,
+        files: [{ index: 0, path: "a.txt", size: 5, mime: "text/plain", mtime: null }],
+      }),
+    );
+
+    session.declineIncomingTransfer("no thanks");
+
+    expect(session.getState().incomingOffer).toBeNull();
+    expect(peerInstances[0].controlChannel.send).toHaveBeenCalledWith(
+      expect.stringContaining("no thanks"),
+    );
+  });
+
+  it("routes incoming data frames to the receiver and completes a full small transfer", async () => {
+    const { session, peerInstances } = await connectedSession();
+    const control = peerInstances[0].controlChannel;
+
+    control.simulateMessage(
+      JSON.stringify({
+        type: "offer_files",
+        transfer_id: "t1",
+        block_size: 4,
+        files: [{ index: 0, path: "a.txt", size: 4, mime: "text/plain", mtime: null }],
+      }),
+    );
+    session.acceptIncomingTransfer();
+
+    const content = new TextEncoder().encode("abcd");
+    const hashHex = await hashBytesHex(content);
+    control.simulateMessage(JSON.stringify({ type: "block", file: 0, index: 0, sha256: hashHex }));
+    const frame = createFrame(0, 0n, content, true);
+    peerInstances[0].dataChannel.simulateMessage(packFrame(frame).buffer as ArrayBuffer);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const rootHash = await deriveFileRootHash(4n, [await hashBytes(content)]);
+    control.simulateMessage(JSON.stringify({ type: "file_done", file: 0, sha256: rootHash }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(session.getState().readyFiles).toHaveLength(1);
+    expect(session.getState().readyFiles[0].fileIndex).toBe(0);
   });
 });
