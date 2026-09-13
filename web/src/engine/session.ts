@@ -51,16 +51,35 @@ export interface RoomInfo {
   peerId: string;
 }
 
+export interface TransferRate {
+  bytesPerSecond: number;
+  etaSeconds: number;
+}
+
 export interface OutgoingTransferState {
   phase: SenderPhase;
   progress: SenderProgress | null;
+  rate: TransferRate | null;
   error: string | null;
 }
 
 export interface IncomingTransferState {
   phase: ReceiverPhase;
   progress: ReceiverProgress | null;
+  rate: TransferRate | null;
   error: string | null;
+}
+
+/** A simple whole-transfer-average throughput/ETA, computed here (not in a React
+ * component) so the UI layer only ever reads plain numbers -- no timers, refs or
+ * effects of its own (docs/adr/007-react-typescript-client.md: engine stays
+ * framework-free, components stay thin). */
+function computeRate(startedAt: number, bytesDone: number, totalBytes: number): TransferRate {
+  const elapsedSeconds = (Date.now() - startedAt) / 1000;
+  const bytesPerSecond = elapsedSeconds > 0.5 ? bytesDone / elapsedSeconds : 0;
+  const remaining = totalBytes - bytesDone;
+  const etaSeconds = bytesPerSecond > 0 ? remaining / bytesPerSecond : Number.POSITIVE_INFINITY;
+  return { bytesPerSecond, etaSeconds };
 }
 
 export interface SessionState {
@@ -301,18 +320,38 @@ export class BeamSession {
   }
 
   private createReceiver(transferId: string): void {
+    const startedAt = Date.now();
     const receiver = new TransferReceiver({
       storage: this.storageFactory(transferId),
       control: this.peerConnection!.controlChannel,
       onOffer: (manifest) => this.setState({ incomingOffer: manifest }),
       onPhaseChange: (phase) =>
-        this.setState({ incomingTransfer: { phase, progress: this.state.incomingTransfer?.progress ?? null, error: null } }),
+        this.setState({
+          incomingTransfer: {
+            phase,
+            progress: this.state.incomingTransfer?.progress ?? null,
+            rate: this.state.incomingTransfer?.rate ?? null,
+            error: null,
+          },
+        }),
       onProgress: (progress) =>
-        this.setState({ incomingTransfer: { phase: receiver.getPhase(), progress, error: null } }),
+        this.setState({
+          incomingTransfer: {
+            phase: receiver.getPhase(),
+            progress,
+            rate: computeRate(startedAt, progress.totalBytesVerified, progress.totalBytes),
+            error: null,
+          },
+        }),
       onFileReady: (result) => this.setState({ readyFiles: [...this.state.readyFiles, result] }),
       onError: (error) =>
         this.setState({
-          incomingTransfer: { phase: receiver.getPhase(), progress: this.state.incomingTransfer?.progress ?? null, error },
+          incomingTransfer: {
+            phase: receiver.getPhase(),
+            progress: this.state.incomingTransfer?.progress ?? null,
+            rate: this.state.incomingTransfer?.rate ?? null,
+            error,
+          },
         }),
     });
     this.receiver = receiver;
@@ -321,6 +360,7 @@ export class BeamSession {
   /** Offers `files` to the connected peer. Requires an already-connected session. */
   sendFiles(files: File[]): void {
     if (!this.peerConnection) return;
+    const startedAt = Date.now();
     const sender = new TransferSender({
       transferId: crypto.randomUUID(),
       files,
@@ -332,12 +372,31 @@ export class BeamSession {
       // elsewhere -- see memory-storage.ts's comment), even though it works at runtime.
       data: this.peerConnection.dataChannel as unknown as DataChannelLike,
       onPhaseChange: (phase) =>
-        this.setState({ outgoingTransfer: { phase, progress: this.state.outgoingTransfer?.progress ?? null, error: null } }),
+        this.setState({
+          outgoingTransfer: {
+            phase,
+            progress: this.state.outgoingTransfer?.progress ?? null,
+            rate: this.state.outgoingTransfer?.rate ?? null,
+            error: null,
+          },
+        }),
       onProgress: (progress) =>
-        this.setState({ outgoingTransfer: { phase: sender.getPhase(), progress, error: null } }),
+        this.setState({
+          outgoingTransfer: {
+            phase: sender.getPhase(),
+            progress,
+            rate: computeRate(startedAt, progress.totalBytesSent, progress.totalBytes),
+            error: null,
+          },
+        }),
       onError: (error) =>
         this.setState({
-          outgoingTransfer: { phase: sender.getPhase(), progress: this.state.outgoingTransfer?.progress ?? null, error },
+          outgoingTransfer: {
+            phase: sender.getPhase(),
+            progress: this.state.outgoingTransfer?.progress ?? null,
+            rate: this.state.outgoingTransfer?.rate ?? null,
+            error,
+          },
         }),
     });
     this.sender = sender;

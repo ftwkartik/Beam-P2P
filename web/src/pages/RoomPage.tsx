@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { QrCode } from "../components/QrCode";
+import { TransferPanel } from "../components/TransferPanel";
 import { formatSas } from "../engine/sas";
 import type { SessionPhase } from "../engine/session";
 import { useSessionStore } from "../state/session-store";
@@ -82,9 +83,10 @@ export default function RoomPage({ joinCode, onLeave }: RoomPageProps) {
           <p className="mt-2 text-xs text-slate-500">
             If they don't match exactly, stop -- something may be intercepting the connection.
           </p>
-          <p className="mt-4 text-sm text-slate-500">File transfer is coming in Milestone 8.</p>
         </section>
       )}
+
+      {state.phase === "connected" && <TransferPanel />}
 
       {state.phase === "failed" && (
         <p className="mt-6 rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-950 dark:text-red-300">{state.error}</p>

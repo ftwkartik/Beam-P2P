@@ -14,6 +14,9 @@ export interface SessionStore extends SessionState {
   createRoom: () => Promise<void>;
   joinRoom: (code: string) => Promise<void>;
   leave: () => void;
+  sendFiles: (files: File[]) => void;
+  acceptIncomingTransfer: () => void;
+  declineIncomingTransfer: (reason?: string) => void;
 }
 
 export const useSessionStore = create<SessionStore>((set) => {
@@ -23,5 +26,8 @@ export const useSessionStore = create<SessionStore>((set) => {
     createRoom: () => session.createRoom(),
     joinRoom: (code: string) => session.joinRoom(code),
     leave: () => session.leave(),
+    sendFiles: (files: File[]) => session.sendFiles(files),
+    acceptIncomingTransfer: () => session.acceptIncomingTransfer(),
+    declineIncomingTransfer: (reason?: string) => session.declineIncomingTransfer(reason),
   };
 });
