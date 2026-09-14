@@ -1,11 +1,93 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PeerMessage } from "../../protocol/generated/peer-message";
+import { BlockBitmap } from "./bitmap";
 import type { ControlChannelLike } from "./channels";
 import { createFrame, packFrame } from "./framing";
 import { deriveFileRootHash, hashBytes, hashBytesHex } from "./hashing";
 import { TransferReceiver } from "./receiver";
+import { IndexedDbResumeStore } from "./resume-store";
+import type { ResumeStore } from "./resume-store";
 import { MemoryStorage } from "../storage/memory-storage";
+import type { FileStorageHandle, TransferStorage } from "../storage/types";
+
+/** A `durable: true` storage test double whose bytes live outside any one storage
+ * instance -- reopening a file (even from a brand-new `DurableMemoryStorage`, as
+ * session.ts does with a fresh `OpfsStorage(transferId)` after every reconnect)
+ * finds the same bytes. This is what makes it a faithful stand-in for OPFS's
+ * disk-backed persistence, unlike plain `MemoryStorage` (whose `openFile` always
+ * hands back a fresh zeroed buffer, and whose `durable` flag is correctly `false`). */
+class DurableBytes {
+  private readonly filesByIndex = new Map<number, Uint8Array>();
+
+  get(fileIndex: number, size: number): Uint8Array {
+    let bytes = this.filesByIndex.get(fileIndex);
+    if (!bytes) {
+      bytes = new Uint8Array(size);
+      this.filesByIndex.set(fileIndex, bytes);
+    }
+    return bytes;
+  }
+}
+
+class DurableFileHandle implements FileStorageHandle {
+  readonly fileIndex: number;
+  readonly size: number;
+  private readonly bytes: Uint8Array;
+
+  constructor(fileIndex: number, size: number, bytes: Uint8Array) {
+    this.fileIndex = fileIndex;
+    this.size = size;
+    this.bytes = bytes;
+  }
+
+  async writeAt(offset: number, data: Uint8Array): Promise<void> {
+    this.bytes.set(data, offset);
+  }
+
+  async readRange(start: number, end: number): Promise<Uint8Array> {
+    return this.bytes.slice(start, end);
+  }
+
+  async finalize(): Promise<Blob> {
+    return new Blob([this.bytes.buffer as ArrayBuffer]);
+  }
+
+  async close(): Promise<void> {
+    // no-op
+  }
+}
+
+class DurableMemoryStorage implements TransferStorage {
+  readonly durable = true;
+  private readonly persisted: DurableBytes;
+
+  constructor(persisted: DurableBytes) {
+    this.persisted = persisted;
+  }
+
+  async openFile(fileIndex: number, size: number): Promise<FileStorageHandle> {
+    return new DurableFileHandle(fileIndex, size, this.persisted.get(fileIndex, size));
+  }
+
+  async deleteFile(): Promise<void> {
+    // no-op
+  }
+
+  async deleteAll(): Promise<void> {
+    // no-op
+  }
+}
+
+function fakeResumeStore(): ResumeStore {
+  return {
+    wasAccepted: vi.fn(async () => false),
+    markAccepted: vi.fn(async () => {}),
+    loadFile: vi.fn(async () => null),
+    saveFile: vi.fn(async () => {}),
+    clearTransfer: vi.fn(async () => {}),
+  };
+}
 
 class FakeControlChannel implements ControlChannelLike {
   sent: PeerMessage[] = [];
@@ -96,9 +178,10 @@ beforeEach(() => {
 });
 
 describe("offer / accept / decline", () => {
-  it("surfaces the offer via onOffer and moves to 'offered'", () => {
+  it("surfaces the offer via onOffer and moves to 'offered'", async () => {
     const { receiver, onOffer } = build();
     receiver.handleControlMessage(offerFiles([{ index: 0, path: "a.txt", size: 10 }]));
+    await flushMicrotasks();
 
     expect(receiver.getPhase()).toBe("offered");
     expect(onOffer).toHaveBeenCalledWith({
@@ -308,5 +391,128 @@ describe("cancel", () => {
     receiver.accept();
     receiver.handleControlMessage({ type: "cancel", transfer_id: "t1", reason: "changed my mind" });
     expect(receiver.getPhase()).toBe("cancelled");
+  });
+});
+
+describe("resume", () => {
+  it("never touches the resume store when storage isn't durable", async () => {
+    const control = new FakeControlChannel();
+    const resumeStore = fakeResumeStore();
+    const receiver = new TransferReceiver({ storage: new MemoryStorage(), control, resumeStore });
+
+    receiver.handleControlMessage(offerFiles([{ index: 0, path: "a.txt", size: 4 }]));
+    await flushMicrotasks();
+    await receiver.accept();
+    receiver.handleControlMessage({ type: "cancel", transfer_id: "t1", reason: "done" });
+
+    expect(resumeStore.wasAccepted).not.toHaveBeenCalled();
+    expect(resumeStore.markAccepted).not.toHaveBeenCalled();
+    expect(resumeStore.saveFile).not.toHaveBeenCalled();
+    expect(resumeStore.clearTransfer).not.toHaveBeenCalled();
+    expect(control.sent).toContainEqual({ type: "accept", transfer_id: "t1", have: {} });
+  });
+
+  it("resumes from a persisted bitmap after a simulated reconnect, sending only the missing blocks", async () => {
+    const storage = new DurableMemoryStorage(new DurableBytes());
+    const resumeStore = new IndexedDbResumeStore();
+    const bytes = new Uint8Array(40);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = i;
+    const blockSize = 4;
+    const blockCount = 10;
+    const sentBeforeDrop = 8; // exactly one ack batch (ACK_BATCH_SIZE), so it flushes -- and persists -- synchronously
+
+    // --- first connection: 8 of 10 blocks arrive, then it drops ---
+    const control1 = new FakeControlChannel();
+    const receiver1 = new TransferReceiver({ storage, control: control1, resumeStore });
+    receiver1.handleControlMessage(offerFiles([{ index: 0, path: "a.bin", size: bytes.length }], blockSize));
+    await flushMicrotasks();
+    await receiver1.accept();
+
+    for (let b = 0; b < sentBeforeDrop; b++) {
+      const start = b * blockSize;
+      const chunk = bytes.slice(start, start + blockSize);
+      const hashHex = await hashBytesHex(chunk);
+      receiver1.handleControlMessage({ type: "block", file: 0, index: b, sha256: hashHex });
+      receiver1.handleDataFrame(packFrame(createFrame(0, BigInt(start), chunk, true)));
+      await flushMicrotasks();
+    }
+    // The ack (and the persisted bitmap behind it) batches every 8 blocks or 250 ms
+    // (docs/protocol.md §4.1); a real wait past that window makes this deterministic
+    // regardless of exactly how many microtask hops hashing took above.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(control1.sent.some((m) => m.type === "ack")).toBe(true);
+
+    // --- reconnect: a brand new receiver object, same durable storage + resume store ---
+    const control2 = new FakeControlChannel();
+    const onOffer2 = vi.fn();
+    const onFileReady2 = vi.fn();
+    const receiver2 = new TransferReceiver({
+      storage,
+      control: control2,
+      resumeStore,
+      onOffer: onOffer2,
+      onFileReady: onFileReady2,
+    });
+    receiver2.handleControlMessage(offerFiles([{ index: 0, path: "a.bin", size: bytes.length }], blockSize));
+    // The auto-accept path round-trips through the (fake) IndexedDB for every file's
+    // saved bitmap, which schedules its own tasks beyond a single microtask flush.
+    await vi.waitUntil(() => control2.sent.some((m) => m.type === "accept"), { timeout: 1000 });
+
+    // Already accepted before the drop: resumes silently, no consent prompt again.
+    expect(onOffer2).not.toHaveBeenCalled();
+    expect(receiver2.getPhase()).toBe("receiving");
+    const acceptMessage = control2.sent.find((m) => m.type === "accept");
+    expect(acceptMessage).toMatchObject({ type: "accept", transfer_id: "t1" });
+    const have = (acceptMessage as { have: Record<string, string> }).have;
+    expect(Object.keys(have)).toEqual(["0"]);
+    const resumedBitmap = BlockBitmap.fromBase64(have[0], blockCount);
+    const resumedCount = resumedBitmap.count();
+    // At least a whole ack batch's worth resumed, and strictly fewer than all of
+    // them -- proving this is a genuine partial resume, not "everything" or "nothing".
+    expect(resumedCount).toBeGreaterThanOrEqual(8);
+    expect(resumedCount).toBeLessThan(blockCount);
+
+    // Only send the blocks the resumed bitmap doesn't already have.
+    const allBlockHashes: Uint8Array[] = [];
+    for (let b = 0; b < blockCount; b++) {
+      const start = b * blockSize;
+      const end = Math.min(start + blockSize, bytes.length);
+      const chunk = bytes.slice(start, end);
+      allBlockHashes.push(await hashBytes(chunk));
+      if (resumedBitmap.has(b)) continue;
+      const hashHex = await hashBytesHex(chunk);
+      receiver2.handleControlMessage({ type: "block", file: 0, index: b, sha256: hashHex });
+      receiver2.handleDataFrame(packFrame(createFrame(0, BigInt(start), chunk, true)));
+      await flushMicrotasks();
+    }
+
+    const rootHash = await deriveFileRootHash(BigInt(bytes.length), allBlockHashes);
+    receiver2.handleControlMessage({ type: "file_done", file: 0, sha256: rootHash });
+    await flushMicrotasks();
+
+    expect(receiver2.getPhase()).toBe("completed");
+    expect(onFileReady2).toHaveBeenCalledTimes(1);
+    const resultBytes = new Uint8Array(await (onFileReady2.mock.calls[0][0] as { blob: Blob }).blob.arrayBuffer());
+    expect(Array.from(resultBytes)).toEqual(Array.from(bytes));
+
+    // A completed transfer's resume records are cleaned up.
+    expect(await resumeStore.wasAccepted("t1")).toBe(false);
+    expect(await resumeStore.loadFile("t1", 0)).toBeNull();
+  });
+
+  it("clears resume records when the receiver declines", async () => {
+    const storage = new DurableMemoryStorage(new DurableBytes());
+    const resumeStore = new IndexedDbResumeStore();
+    const control = new FakeControlChannel();
+    const receiver = new TransferReceiver({ storage, control, resumeStore });
+
+    receiver.handleControlMessage(offerFiles([{ index: 0, path: "a.txt", size: 4 }]));
+    await flushMicrotasks();
+    await receiver.accept();
+    await flushMicrotasks();
+    expect(await resumeStore.wasAccepted("t1")).toBe(true);
+
+    receiver.decline("no thanks");
+    expect(await resumeStore.wasAccepted("t1")).toBe(false);
   });
 });

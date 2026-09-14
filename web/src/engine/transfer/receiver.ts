@@ -13,8 +13,9 @@ import type {
 } from "../../protocol/generated/peer-message";
 import { BlockBitmap, indicesToRanges } from "./bitmap";
 import { unpackFrame } from "./framing";
-import { deriveFileRootHash, hashBytes, hashBytesHex } from "./hashing";
+import { bytesToHex, deriveFileRootHash, hashBytes, hashBytesHex, hexToBytes } from "./hashing";
 import type { ControlChannelLike } from "./channels";
+import { NullResumeStore, type PersistedFileState, type ResumeStore } from "./resume-store";
 import type { TransferStorage, FileStorageHandle } from "../storage/types";
 
 /** docs/protocol.md §4.1: ack ranges are batched, every 8 blocks or 250 ms. */
@@ -54,6 +55,10 @@ export interface FileReadyResult {
 export interface TransferReceiverOptions {
   storage: TransferStorage;
   control: ControlChannelLike;
+  /** Where verified-block bitmaps are persisted for resume. Only ever consulted
+   * when `storage.durable` is true (see storage/types.ts) -- a bitmap is worthless
+   * without durable bytes behind it. Defaults to a no-op store. */
+  resumeStore?: ResumeStore;
   onOffer?: (manifest: OfferedManifest) => void;
   onPhaseChange?: (phase: ReceiverPhase) => void;
   onProgress?: (progress: ReceiverProgress) => void;
@@ -78,6 +83,7 @@ interface FileState {
 export class TransferReceiver {
   private readonly storage: TransferStorage;
   private readonly control: ControlChannelLike;
+  private readonly resumeStore: ResumeStore;
   private readonly onOffer?: (manifest: OfferedManifest) => void;
   private readonly onPhaseChange?: (phase: ReceiverPhase) => void;
   private readonly onProgress?: (progress: ReceiverProgress) => void;
@@ -88,12 +94,14 @@ export class TransferReceiver {
   private manifest: OfferedManifest | null = null;
   private readonly filesByIndex = new Map<number, FileState>();
   private readonly fileStatePromises = new Map<number, Promise<FileState>>();
+  private readonly resumeSeeds = new Map<number, PersistedFileState>();
   private totalBytes = 0;
   private totalBytesVerified = 0;
 
   constructor(options: TransferReceiverOptions) {
     this.storage = options.storage;
     this.control = options.control;
+    this.resumeStore = options.resumeStore ?? new NullResumeStore();
     this.onOffer = options.onOffer;
     this.onPhaseChange = options.onPhaseChange;
     this.onProgress = options.onProgress;
@@ -104,7 +112,7 @@ export class TransferReceiver {
   handleControlMessage(message: PeerMessage): void {
     switch (message.type) {
       case "offer_files":
-        this.handleOffer(message);
+        void this.handleOffer(message);
         break;
       case "block":
         this.handleBlockAnnouncement(message);
@@ -125,13 +133,25 @@ export class TransferReceiver {
     void this.processFrame(raw);
   }
 
-  /** Accepts the pending offer (call after `onOffer` and user consent). */
-  accept(): void {
+  /** Accepts the pending offer (call after `onOffer` and user consent, or
+   * automatically when resuming a transfer already accepted before a reconnect). */
+  async accept(): Promise<void> {
     if (!this.manifest) return;
     this.setPhase("receiving");
-    this.control.send(
-      JSON.stringify({ type: "accept", transfer_id: this.manifest.transferId, have: {} }),
-    );
+
+    const have: Record<number, string> = {};
+    if (this.storage.durable) {
+      await this.resumeStore.markAccepted(this.manifest.transferId);
+      for (const file of this.manifest.files) {
+        const saved = await this.resumeStore.loadFile(this.manifest.transferId, file.index);
+        if (saved && saved.size === file.size) {
+          this.resumeSeeds.set(file.index, saved);
+          have[file.index] = saved.bitmapBase64;
+        }
+      }
+    }
+
+    this.control.send(JSON.stringify({ type: "accept", transfer_id: this.manifest.transferId, have }));
   }
 
   decline(reason: string): void {
@@ -146,10 +166,20 @@ export class TransferReceiver {
     return this.phase;
   }
 
-  private handleOffer(message: OfferFilesMessage): void {
+  private async handleOffer(message: OfferFilesMessage): Promise<void> {
     this.manifest = { transferId: message.transfer_id, blockSize: message.block_size, files: message.files };
     this.totalBytes = message.files.reduce((sum, f) => sum + f.size, 0);
     this.setPhase("offered");
+
+    // The sender re-sends `offer_files` with the same transfer id after a
+    // reconnect (session.ts resumes a pending outgoing transfer this way). If this
+    // transfer was already accepted before the connection dropped, resume silently
+    // instead of asking the user to consent to the same transfer twice. Only
+    // meaningful for durable storage -- see storage/types.ts.
+    if (this.storage.durable && (await this.resumeStore.wasAccepted(message.transfer_id))) {
+      await this.accept();
+      return;
+    }
     this.onOffer?.(this.manifest);
   }
 
@@ -184,6 +214,19 @@ export class TransferReceiver {
       expectedRootHash: null,
       verified: false,
     };
+
+    const seed = this.resumeSeeds.get(fileIndex);
+    if (seed) {
+      state.bitmap = BlockBitmap.fromBase64(seed.bitmapBase64, blockCount);
+      for (let i = 0; i < blockCount; i++) {
+        const hex = seed.blockHashesHex[i];
+        if (hex) state.blockHashes[i] = hexToBytes(hex);
+      }
+      const resumedBytes = sumVerifiedBytes(state, this.manifest.blockSize);
+      this.totalBytesVerified += resumedBytes;
+      this.reportProgress(state);
+    }
+
     this.filesByIndex.set(fileIndex, state);
     return state;
   }
@@ -267,6 +310,18 @@ export class TransferReceiver {
     const ranges = indicesToRanges(state.pendingAckIndices);
     state.pendingAckIndices = [];
     this.control.send(JSON.stringify({ type: "ack", file: state.offer.index, verified: ranges }));
+    this.persistFileState(state);
+  }
+
+  /** Batched at the same cadence as acks (docs/protocol.md §4.1), not per block --
+   * only meaningful for durable storage (see storage/types.ts). */
+  private persistFileState(state: FileState): void {
+    if (!this.manifest || !this.storage.durable) return;
+    void this.resumeStore.saveFile(this.manifest.transferId, state.offer.index, {
+      size: state.offer.size,
+      bitmapBase64: state.bitmap.toBase64(),
+      blockHashesHex: state.blockHashes.map((h) => (h ? bytesToHex(h) : null)),
+    });
   }
 
   private reportProgress(state: FileState): void {
@@ -295,6 +350,7 @@ export class TransferReceiver {
     if (state.verified || state.expectedRootHash === null) return;
     state.verified = true;
     this.flushAck(state);
+    this.persistFileState(state);
 
     const actualRootHash = await deriveFileRootHash(BigInt(state.offer.size), state.blockHashes);
     const ok = actualRootHash === state.expectedRootHash;
@@ -319,7 +375,15 @@ export class TransferReceiver {
     if (phase === this.phase) return;
     this.phase = phase;
     this.onPhaseChange?.(phase);
+
+    if (this.manifest && this.storage.durable && isTerminalPhase(phase)) {
+      void this.resumeStore.clearTransfer(this.manifest.transferId);
+    }
   }
+}
+
+function isTerminalPhase(phase: ReceiverPhase): boolean {
+  return phase === "completed" || phase === "failed" || phase === "declined" || phase === "cancelled";
 }
 
 function sumVerifiedBytes(state: FileState, blockSize: number): number {

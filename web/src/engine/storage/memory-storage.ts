@@ -50,7 +50,7 @@ class MemoryFileHandle implements FileStorageHandle {
 }
 
 export class MemoryStorage implements TransferStorage {
-  readonly durable = false;
+  readonly durable: boolean = false;
   private readonly handles = new Map<number, MemoryFileHandle>();
 
   async openFile(fileIndex: number, size: number): Promise<FileStorageHandle> {

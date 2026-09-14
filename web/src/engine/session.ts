@@ -405,7 +405,7 @@ export class BeamSession {
 
   /** Accepts the pending incoming offer (see `state.incomingOffer`). */
   acceptIncomingTransfer(): void {
-    this.receiver?.accept();
+    void this.receiver?.accept();
     this.setState({ incomingOffer: null });
   }
 

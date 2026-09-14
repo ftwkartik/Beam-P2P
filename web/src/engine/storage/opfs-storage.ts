@@ -25,7 +25,7 @@ interface PendingCall {
 }
 
 export class OpfsStorage implements TransferStorage {
-  readonly durable = true;
+  readonly durable: boolean = true;
   private readonly transferId: string;
   private readonly worker: Worker;
   private nextId = 1;
