@@ -35,6 +35,10 @@ function build(): { storage: OpfsStorage; worker: FakeWorker } {
 }
 
 describe("OpfsStorage", () => {
+  it("is durable (bytes are disk-backed and survive the instance being discarded)", () => {
+    expect(build().storage.durable).toBe(true);
+  });
+
   it("sends an open request scoped to the transfer id", async () => {
     const { storage, worker } = build();
     const openPromise = storage.openFile(0, 100);

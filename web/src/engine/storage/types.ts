@@ -16,6 +16,12 @@ export interface FileStorageHandle {
 }
 
 export interface TransferStorage {
+  /** Whether bytes already written survive this storage instance being discarded and
+   * recreated (a peer-connection rebuild, or a page reload) -- true for OPFS, false
+   * for the in-memory fallback. Gates whether transfer/receiver.ts trusts a persisted
+   * verified-block bitmap on resume: without durable bytes behind it, a bitmap saying
+   * "block 5 verified" would be a lie the moment the storage instance is gone. */
+  readonly durable: boolean;
   openFile(fileIndex: number, size: number): Promise<FileStorageHandle>;
   deleteFile(fileIndex: number): Promise<void>;
   /** Removes every file belonging to this transfer (docs/adr/006, "Stale partials"). */

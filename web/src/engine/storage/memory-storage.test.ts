@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { MemoryStorage } from "./memory-storage";
 
 describe("MemoryStorage", () => {
+  it("is not durable (bytes don't survive the instance being discarded)", () => {
+    expect(new MemoryStorage().durable).toBe(false);
+  });
+
   it("writes and reads back bytes at an offset", async () => {
     const storage = new MemoryStorage();
     const handle = await storage.openFile(0, 10);
