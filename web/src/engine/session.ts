@@ -7,6 +7,7 @@
 
 import * as realApi from "./api";
 import { PeerConnection, type PeerConnectionOptions } from "./peer";
+import { clearRoomSession, loadRoomSession, saveRoomSession } from "./room-persistence";
 import { deriveSas, type SasSymbol } from "./sas";
 import { SignalingClient, type SignalingClientOptions, type SignalingStatus } from "./signaling";
 import { MemoryStorage } from "./storage/memory-storage";
@@ -20,6 +21,7 @@ import type {
 } from "./transfer/receiver";
 import { TransferReceiver } from "./transfer/receiver";
 import type { DataChannelLike } from "./transfer/channels";
+import { IndexedDbResumeStore, type ResumeStore } from "./transfer/resume-store";
 import type { SenderPhase, SenderProgress } from "./transfer/sender";
 import { TransferSender } from "./transfer/sender";
 import type { PeerMessage } from "../protocol/generated/peer-message";
@@ -112,6 +114,7 @@ export interface BeamSessionOptions {
   signalingFactory?: (options: SignalingClientOptions) => SignalingClient;
   peerConnectionFactory?: (options: PeerConnectionOptions) => PeerConnection;
   storageFactory?: (transferId: string) => TransferStorage;
+  resumeStore?: ResumeStore;
 }
 
 function initialState(): SessionState {
@@ -143,6 +146,7 @@ export class BeamSession {
   private readonly signalingFactory: (options: SignalingClientOptions) => SignalingClient;
   private readonly peerConnectionFactory: (options: PeerConnectionOptions) => PeerConnection;
   private readonly storageFactory: (transferId: string) => TransferStorage;
+  private readonly resumeStore: ResumeStore;
 
   private state: SessionState = initialState();
   private readonly listeners = new Set<(state: SessionState) => void>();
@@ -155,12 +159,19 @@ export class BeamSession {
 
   private sender: TransferSender | null = null;
   private receiver: TransferReceiver | null = null;
+  /** An outgoing transfer that hasn't reached a terminal phase yet, tracked
+   * independently of `sender` so it survives `setupPeerConnection()` wiping the
+   * sender on a reconnect -- once the new connection reaches "connected" again,
+   * `handleConnected()` restarts it with the same transfer id and files, and the
+   * receiver resumes it via its own persisted bitmap (transfer/receiver.ts). */
+  private pendingOutgoingTransfer: { transferId: string; files: File[] } | null = null;
 
   constructor(options: BeamSessionOptions = {}) {
     this.api = options.api ?? realApi;
     this.signalingFactory = options.signalingFactory ?? ((o) => new SignalingClient(o));
     this.peerConnectionFactory = options.peerConnectionFactory ?? ((o) => new PeerConnection(o));
     this.storageFactory = options.storageFactory ?? defaultStorageFactory;
+    this.resumeStore = options.resumeStore ?? new IndexedDbResumeStore();
   }
 
   getState(): SessionState {
@@ -215,8 +226,32 @@ export class BeamSession {
     this.peerConnection = null;
     this.sender = null;
     this.receiver = null;
+    this.pendingOutgoingTransfer = null;
     this.token = null;
+    clearRoomSession();
     this.setState(initialState());
+  }
+
+  /** Reconnects to a room persisted before a page reload (`room-persistence.ts`),
+   * skipping the REST create/join step -- the room token is valid for the room's
+   * whole lifetime. Returns whether a persisted session was found at all; a
+   * connection failure past that point surfaces the normal way, via `state.phase`
+   * becoming "failed". Call once, on app boot, before the user does anything else. */
+  async resume(): Promise<boolean> {
+    const persisted = loadRoomSession();
+    if (!persisted) return false;
+
+    this.token = persisted.token;
+    this.setState({ ...initialState(), phase: "connecting" });
+    await this.startSignaling({
+      roomId: persisted.roomId,
+      code: persisted.code,
+      nameplate: persisted.nameplate,
+      expiresAt: persisted.expiresAt,
+      role: persisted.role,
+      peerId: "",
+    });
+    return true;
   }
 
   private async startSignaling(room: RoomInfo): Promise<void> {
@@ -230,6 +265,14 @@ export class BeamSession {
     }));
 
     this.setState({ room });
+    saveRoomSession({
+      roomId: room.roomId,
+      token: this.token,
+      code: room.code,
+      nameplate: room.nameplate,
+      expiresAt: room.expiresAt,
+      role: room.role,
+    });
 
     this.signaling = this.signalingFactory({
       wsUrl: this.api.signalingWsUrl(),
@@ -324,6 +367,7 @@ export class BeamSession {
     const receiver = new TransferReceiver({
       storage: this.storageFactory(transferId),
       control: this.peerConnection!.controlChannel,
+      resumeStore: this.resumeStore,
       onOffer: (manifest) => this.setState({ incomingOffer: manifest }),
       onPhaseChange: (phase) =>
         this.setState({
@@ -360,9 +404,19 @@ export class BeamSession {
   /** Offers `files` to the connected peer. Requires an already-connected session. */
   sendFiles(files: File[]): void {
     if (!this.peerConnection) return;
+    const transferId = crypto.randomUUID();
+    this.pendingOutgoingTransfer = { transferId, files };
+    this.startOutgoingTransfer(transferId, files);
+  }
+
+  /** Starts (or, after a reconnect, restarts) sending `files` under `transferId`.
+   * Reusing the same id on a restart is what lets the receiver's persisted bitmap
+   * (transfer/receiver.ts) match it up and skip already-verified blocks. */
+  private startOutgoingTransfer(transferId: string, files: File[]): void {
+    if (!this.peerConnection) return;
     const startedAt = Date.now();
     const sender = new TransferSender({
-      transferId: crypto.randomUUID(),
+      transferId,
       files,
       control: this.peerConnection.controlChannel,
       // RTCDataChannel.send is overloaded (string | Blob | ArrayBuffer |
@@ -371,7 +425,7 @@ export class BeamSession {
       // overload here (the same @types/node/TS TypedArray-generics friction as
       // elsewhere -- see memory-storage.ts's comment), even though it works at runtime.
       data: this.peerConnection.dataChannel as unknown as DataChannelLike,
-      onPhaseChange: (phase) =>
+      onPhaseChange: (phase) => {
         this.setState({
           outgoingTransfer: {
             phase,
@@ -379,7 +433,9 @@ export class BeamSession {
             rate: this.state.outgoingTransfer?.rate ?? null,
             error: null,
           },
-        }),
+        });
+        if (isSenderTerminalPhase(phase)) this.pendingOutgoingTransfer = null;
+      },
       onProgress: (progress) =>
         this.setState({
           outgoingTransfer: {
@@ -421,6 +477,12 @@ export class BeamSession {
       this.setState({ sas });
     }
     this.setState({ phase: "connected" });
+
+    // A reconnect wiped `sender` (setupPeerConnection()) without the transfer
+    // itself finishing -- restart it now that there's a connection to send on.
+    if (this.pendingOutgoingTransfer && this.sender === null) {
+      this.startOutgoingTransfer(this.pendingOutgoingTransfer.transferId, this.pendingOutgoingTransfer.files);
+    }
   }
 
   private fail(message: string): void {
@@ -428,6 +490,8 @@ export class BeamSession {
     this.peerConnection?.close();
     this.sender = null;
     this.receiver = null;
+    this.pendingOutgoingTransfer = null;
+    clearRoomSession();
     this.setState({ phase: "failed", error: message });
   }
 
@@ -440,4 +504,8 @@ export class BeamSession {
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return "Something went wrong.";
+}
+
+function isSenderTerminalPhase(phase: SenderPhase): boolean {
+  return phase === "completed" || phase === "failed" || phase === "cancelled" || phase === "declined";
 }

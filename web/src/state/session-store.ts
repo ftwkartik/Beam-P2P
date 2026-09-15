@@ -13,6 +13,9 @@ const session = new BeamSession();
 export interface SessionStore extends SessionState {
   createRoom: () => Promise<void>;
   joinRoom: (code: string) => Promise<void>;
+  /** Reconnects to a room persisted before a page reload, if there is one. Call once
+   * on app boot; returns whether a persisted session was found. */
+  resume: () => Promise<boolean>;
   leave: () => void;
   sendFiles: (files: File[]) => void;
   acceptIncomingTransfer: () => void;
@@ -25,6 +28,7 @@ export const useSessionStore = create<SessionStore>((set) => {
     ...session.getState(),
     createRoom: () => session.createRoom(),
     joinRoom: (code: string) => session.joinRoom(code),
+    resume: () => session.resume(),
     leave: () => session.leave(),
     sendFiles: (files: File[]) => session.sendFiles(files),
     acceptIncomingTransfer: () => session.acceptIncomingTransfer(),

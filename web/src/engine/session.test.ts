@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { PeerConnectionOptions } from "./peer";
+import { clearRoomSession, loadRoomSession, saveRoomSession } from "./room-persistence";
 import type { ApiClient } from "./session";
 import { BeamSession } from "./session";
-import type { PeerConnectionOptions } from "./peer";
 import type { SignalingClientOptions } from "./signaling";
 import { createFrame, packFrame } from "./transfer/framing";
 import { deriveFileRootHash, hashBytes, hashBytesHex } from "./transfer/hashing";
@@ -113,6 +114,7 @@ function buildFakeApi(overrides: Partial<ApiClient> = {}): {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearRoomSession();
 });
 
 describe("BeamSession.createRoom", () => {
@@ -430,5 +432,140 @@ describe("transfer engine wiring", () => {
 
     expect(session.getState().readyFiles).toHaveLength(1);
     expect(session.getState().readyFiles[0].fileIndex).toBe(0);
+  });
+});
+
+describe("room session persistence and resume", () => {
+  it("persists the room session once signaling starts", async () => {
+    const { session } = buildFakeApi({
+      createRoom: vi.fn().mockResolvedValue({
+        room_id: "room-1",
+        code: "7-otter-lantern-tiger",
+        nameplate: 7,
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        token: "room-token",
+      }),
+    });
+
+    await session.createRoom();
+
+    expect(loadRoomSession()).toMatchObject({ roomId: "room-1", token: "room-token", role: "creator" });
+  });
+
+  it("leave() clears the persisted session", async () => {
+    const { session } = buildFakeApi({
+      createRoom: vi.fn().mockResolvedValue({
+        room_id: "room-1",
+        code: "7-otter-lantern-tiger",
+        nameplate: 7,
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        token: "room-token",
+      }),
+    });
+    await session.createRoom();
+    expect(loadRoomSession()).not.toBeNull();
+
+    session.leave();
+
+    expect(loadRoomSession()).toBeNull();
+  });
+
+  it("a fatal signaling close clears the persisted session", async () => {
+    const { session, signalingInstances } = buildFakeApi({
+      createRoom: vi.fn().mockResolvedValue({
+        room_id: "room-1",
+        code: "7-otter-lantern-tiger",
+        nameplate: 7,
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        token: "room-token",
+      }),
+    });
+    await session.createRoom();
+    expect(loadRoomSession()).not.toBeNull();
+
+    signalingInstances[0].options.onFatal?.(4404, "room not found");
+
+    expect(session.getState().phase).toBe("failed");
+    expect(loadRoomSession()).toBeNull();
+  });
+
+  it("resume() does nothing and returns false when there's no persisted session", async () => {
+    const { api, session } = buildFakeApi();
+
+    const resumed = await session.resume();
+
+    expect(resumed).toBe(false);
+    expect(api.createRoom).not.toHaveBeenCalled();
+    expect(api.joinRoom).not.toHaveBeenCalled();
+    expect(session.getState().phase).toBe("idle");
+  });
+
+  it("resume() reconnects with the persisted token, skipping the REST create/join step", async () => {
+    const { api, session, signalingInstances } = buildFakeApi();
+    saveRoomSession({
+      roomId: "room-1",
+      token: "room-token",
+      code: "7-otter-lantern-tiger",
+      nameplate: 7,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      role: "joiner",
+    });
+
+    const resumed = await session.resume();
+
+    expect(resumed).toBe(true);
+    expect(api.createRoom).not.toHaveBeenCalled();
+    expect(api.joinRoom).not.toHaveBeenCalled();
+    expect(api.getIceServers).toHaveBeenCalledWith("room-1", "room-token");
+    expect(signalingInstances).toHaveLength(1);
+    expect(signalingInstances[0].options.token).toBe("room-token");
+    expect(session.getState().room).toMatchObject({ roomId: "room-1", role: "joiner" });
+  });
+});
+
+function offerFilesTransferId(sendMock: { mock: { calls: unknown[][] } }): string | undefined {
+  const messages = sendMock.mock.calls.map((call) => JSON.parse(call[0] as string) as { type: string; transfer_id?: string });
+  return messages.find((m) => m.type === "offer_files")?.transfer_id;
+}
+
+describe("outgoing transfer resume across a reconnect", () => {
+  it("restarts an in-progress outgoing transfer with the same transfer id once reconnected", async () => {
+    const { session, signalingInstances, peerInstances } = await connectedSession();
+
+    session.sendFiles([new File(["hello"], "a.txt")]);
+    const firstTransferId = offerFilesTransferId(peerInstances[0].controlChannel.send);
+    expect(firstTransferId).toBeTruthy();
+
+    // Simulate a reconnect: the other peer is announced again on the *same*
+    // signaling client, which tears down and rebuilds the peer connection
+    // (session.ts's setupPeerConnection()), wiping the old TransferSender.
+    signalingInstances[0].options.onPeerJoined?.({ type: "peer_joined", peer_id: "peer-other", role: "joiner" });
+    expect(peerInstances).toHaveLength(2);
+
+    // The new peer connection reaching "connected" is what triggers the restart.
+    await peerInstances[1].options.onConnectionStateChange?.("connected");
+    await vi.waitFor(() => expect(offerFilesTransferId(peerInstances[1].controlChannel.send)).toBeTruthy());
+
+    expect(offerFilesTransferId(peerInstances[1].controlChannel.send)).toBe(firstTransferId);
+  });
+
+  it("does not restart a transfer that already finished before the reconnect", async () => {
+    const { session, signalingInstances, peerInstances } = await connectedSession();
+
+    session.sendFiles([new File(["hello"], "a.txt")]);
+    // A sender never waits for `file_verified` to move on (sender.ts), but it does
+    // fail immediately on a declined offer -- the simplest terminal phase to reach
+    // without also driving a full block-by-block transfer in this test.
+    peerInstances[0].controlChannel.simulateMessage(
+      JSON.stringify({ type: "decline", transfer_id: offerFilesTransferId(peerInstances[0].controlChannel.send), reason: "no thanks" }),
+    );
+    expect(session.getState().outgoingTransfer?.phase).toBe("declined");
+
+    signalingInstances[0].options.onPeerJoined?.({ type: "peer_joined", peer_id: "peer-other", role: "joiner" });
+    await peerInstances[1].options.onConnectionStateChange?.("connected");
+    // Give any (incorrect) restart a chance to happen before asserting it didn't.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(offerFilesTransferId(peerInstances[1].controlChannel.send)).toBeUndefined();
   });
 });
