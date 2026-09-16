@@ -201,6 +201,24 @@ async def signaling_endpoint(
     )
 
     other_peer_id = _other_peer_id(room, claims)
+
+    async def _resolve_other_peer_id() -> str | None:
+        # `other_peer_id` is only known here if the other peer had already joined the
+        # room by the time *this* peer's `room` snapshot was fetched, above. When the
+        # creator connects first and waits, it's still `None` at this point -- the
+        # room record only gains a `joiner_peer` once someone actually calls
+        # `POST /rooms/join`, which can happen any time after. Every later use of
+        # `other_peer_id` (relaying a signal, announcing this peer's departure) goes
+        # through this instead of the closed-over value directly, so it keeps working
+        # once the other peer shows up, instead of silently addressing nobody for the
+        # rest of this connection's lifetime.
+        nonlocal other_peer_id
+        if other_peer_id is None:
+            current_room = await rooms_repo.get_room(claims.room_id)
+            if current_room is not None:
+                other_peer_id = _other_peer_id(current_room, claims)
+        return other_peer_id
+
     # Presence is the cross-instance-visible source of truth for "is the other peer
     # connected right now" -- unlike `hub`, which only ever knows about sessions on
     # *this* instance, and would wrongly report a peer on another instance as absent.
@@ -265,10 +283,11 @@ async def signaling_endpoint(
             return
 
         await presence_repo.delete(room_id=claims.room_id, peer_id=claims.peer_id)
-        if other_peer_id:
+        resolved_peer_id = await _resolve_other_peer_id()
+        if resolved_peer_id:
             await pubsub.publish(
                 claims.room_id,
-                to=other_peer_id,
+                to=resolved_peer_id,
                 message=PeerLeftMessage(peer_id=claims.peer_id, reason="timeout"),
             )
         logger.info("ws_reconnect_grace_expired", room_id=claims.room_id, peer_id=claims.peer_id)
@@ -309,10 +328,11 @@ async def signaling_endpoint(
                     if session.ice_candidate_count > settings.ws_max_ice_candidates_per_session:
                         await _close(websocket, WS_CLOSE_MALFORMED_MESSAGE)
                         return
-                if other_peer_id:
+                resolved_peer_id = await _resolve_other_peer_id()
+                if resolved_peer_id:
                     await pubsub.publish(
                         claims.room_id,
-                        to=other_peer_id,
+                        to=resolved_peer_id,
                         # Constructed via model_validate rather than the constructor:
                         # "from" is the wire field name (see ServerSignalMessage's
                         # alias), and `from` is a Python keyword, so it can't be
@@ -340,10 +360,11 @@ async def signaling_endpoint(
 
         if graceful_leave:
             await presence_repo.delete(room_id=claims.room_id, peer_id=claims.peer_id)
-            if other_peer_id:
+            resolved_peer_id = await _resolve_other_peer_id()
+            if resolved_peer_id:
                 await pubsub.publish(
                     claims.room_id,
-                    to=other_peer_id,
+                    to=resolved_peer_id,
                     message=PeerLeftMessage(peer_id=claims.peer_id, reason="left"),
                 )
             # A `leave` message doesn't disconnect the socket by itself -- unlike
@@ -355,10 +376,11 @@ async def signaling_endpoint(
             logger.info("ws_left", room_id=claims.room_id, peer_id=claims.peer_id)
         elif is_still_current:
             await presence_repo.set_reconnecting(room_id=claims.room_id, peer_id=claims.peer_id)
-            if other_peer_id:
+            resolved_peer_id = await _resolve_other_peer_id()
+            if resolved_peer_id:
                 await pubsub.publish(
                     claims.room_id,
-                    to=other_peer_id,
+                    to=resolved_peer_id,
                     message=PeerReconnectingMessage(peer_id=claims.peer_id),
                 )
             hub.schedule_reconnect_timeout(

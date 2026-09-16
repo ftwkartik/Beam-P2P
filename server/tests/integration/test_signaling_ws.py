@@ -396,6 +396,39 @@ class TestRelayAndPresence:
                 assert relayed["from"] == creator_welcome["peer_id"]
                 assert relayed["data"]["candidate"]["candidate"] == "from-creator"
 
+    def test_creator_can_relay_after_the_joiner_arrives_later(
+        self, make_client: ClientFactory
+    ) -> None:
+        """The room's `other_peer_id` is resolved from a `room` snapshot fetched once,
+        at connect time (see `_resolve_other_peer_id` in ws/endpoint.py). Every other
+        test in this file calls `_simulate_join` *before* the creator's socket opens,
+        so that snapshot already has a `joiner_peer` and never exercises the real
+        production ordering: the creator connects and waits alone, and the room only
+        gains a joiner sometime after. Without re-resolving it lazily, the creator's
+        signal messages silently address nobody for the rest of that connection's
+        life -- found via a real two-browser Playwright run (Milestone 9), not a unit
+        test, which is exactly why this one exists now.
+        """
+        client = make_client()
+        room = _create_room(client)
+
+        with client.websocket_connect("/ws") as creator_ws:
+            creator_ws.send_json(_hello(room["token"]))
+            creator_welcome = creator_ws.receive_json()
+            assert creator_welcome["peers"] == []  # nobody here yet
+
+            joined = _simulate_join(make_client, room)
+
+            with client.websocket_connect("/ws") as joiner_ws:
+                joiner_ws.send_json(_hello(joined["token"]))
+                joiner_ws.receive_json()  # welcome
+                creator_ws.receive_json()  # peer_joined
+
+                creator_ws.send_json(_candidate_signal("from-creator-late-joiner"))
+                relayed = joiner_ws.receive_json()
+                assert relayed["from"] == creator_welcome["peer_id"]
+                assert relayed["data"]["candidate"]["candidate"] == "from-creator-late-joiner"
+
     def test_leave_notifies_the_other_peer_immediately(self, make_client: ClientFactory) -> None:
         client = make_client()
         room = _create_room(client)
