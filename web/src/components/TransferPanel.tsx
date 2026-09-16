@@ -170,6 +170,7 @@ export function TransferPanel() {
           type="file"
           multiple
           className="hidden"
+          data-testid="file-input"
           onChange={(e) => handleFiles(e.target.files)}
         />
         <input
@@ -178,6 +179,7 @@ export function TransferPanel() {
           // @ts-expect-error -- webkitdirectory has no TS DOM typing, but every major browser supports it.
           webkitdirectory=""
           className="hidden"
+          data-testid="folder-input"
           onChange={(e) => handleFiles(e.target.files)}
         />
       </section>

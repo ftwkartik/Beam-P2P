@@ -36,6 +36,17 @@ export function saveRoomSession(session: PersistedRoomSession): void {
   }
 }
 
+/** `RoomInfo.expiresAt` (and so `PersistedRoomSession.expiresAt`) carries whichever
+ * format the value happened to arrive in: the REST create/join responses return a
+ * raw Unix epoch *seconds* float, while the WS `welcome` message returns an ISO
+ * string. `new Date(n)` always treats a bare number as milliseconds, so a raw
+ * epoch-seconds value needs scaling first or it reads as an already-long-expired
+ * 1970 date -- found via a real receiver-reload E2E run (Milestone 9), where every
+ * resume was silently treated as expired immediately. */
+function expiresAtMs(expiresAt: string | number): number {
+  return typeof expiresAt === "number" ? expiresAt * 1000 : new Date(expiresAt).getTime();
+}
+
 /** Returns the persisted session, or null if there is none, it's malformed, or it
  * has already expired -- callers don't need to separately re-check `expiresAt`. */
 export function loadRoomSession(): PersistedRoomSession | null {
@@ -45,7 +56,7 @@ export function loadRoomSession(): PersistedRoomSession | null {
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!isPersistedRoomSession(parsed)) return null;
-    if (new Date(parsed.expiresAt).getTime() <= Date.now()) return null;
+    if (expiresAtMs(parsed.expiresAt) <= Date.now()) return null;
     return parsed;
   } catch {
     return null;

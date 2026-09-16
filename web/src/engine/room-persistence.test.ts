@@ -40,6 +40,23 @@ describe("room-persistence", () => {
     expect(loadRoomSession()).toBeNull();
   });
 
+  // The REST create/join responses hand back a raw Unix epoch-*seconds* float
+  // (server/src/beam_server/api/rooms.py's `expires_at: float`), unlike the WS
+  // welcome message's ISO string -- `RoomInfo.expiresAt`, and so this, is a union of
+  // both. `new Date(n)` treats a bare number as milliseconds, so this needs its own
+  // coverage: every other test here uses an ISO string and would never have caught
+  // the real bug this once was (every session reading as expired immediately).
+  it("round-trips a session whose expiresAt is a raw epoch-seconds number", () => {
+    const s = session({ expiresAt: Date.now() / 1000 + 60 });
+    saveRoomSession(s);
+    expect(loadRoomSession()).toEqual(s);
+  });
+
+  it("treats an already-expired epoch-seconds-number session as absent", () => {
+    saveRoomSession(session({ expiresAt: Date.now() / 1000 - 60 }));
+    expect(loadRoomSession()).toBeNull();
+  });
+
   it("treats malformed JSON in storage as absent", () => {
     sessionStorage.setItem("beam:room-session", "{not json");
     expect(loadRoomSession()).toBeNull();

@@ -161,9 +161,10 @@ export class BeamSession {
   private receiver: TransferReceiver | null = null;
   /** An outgoing transfer that hasn't reached a terminal phase yet, tracked
    * independently of `sender` so it survives `setupPeerConnection()` wiping the
-   * sender on a reconnect -- once the new connection reaches "connected" again,
-   * `handleConnected()` restarts it with the same transfer id and files, and the
-   * receiver resumes it via its own persisted bitmap (transfer/receiver.ts). */
+   * sender on a reconnect -- once the new connection's control channel reopens
+   * (see `onControlChannelOpen` below), it's restarted with the same transfer id
+   * and files, and the receiver resumes it via its own persisted bitmap
+   * (transfer/receiver.ts). */
   private pendingOutgoingTransfer: { transferId: string; files: File[] } | null = null;
 
   constructor(options: BeamSessionOptions = {}) {
@@ -340,6 +341,18 @@ export class BeamSession {
       onConnectionStateChange: (rtcState) => {
         if (rtcState === "connected") void this.handleConnected();
       },
+      // `connectionstatechange` reaching "connected" does not imply the negotiated
+      // data channels have themselves reached "open" yet -- calling send() before
+      // that throws. A resumed outgoing transfer restarts here, once the control
+      // channel is actually usable, rather than racing that from handleConnected().
+      // The very first connection on a session never hit this race in practice
+      // (there's always a real user pause before anyone picks a file to send), which
+      // is exactly why this needed a real reconnect to surface (Milestone 9).
+      onControlChannelOpen: () => {
+        if (this.pendingOutgoingTransfer && this.sender === null) {
+          this.startOutgoingTransfer(this.pendingOutgoingTransfer.transferId, this.pendingOutgoingTransfer.files);
+        }
+      },
     });
 
     this.peerConnection.controlChannel.addEventListener("message", (event: MessageEvent<string>) => {
@@ -477,12 +490,6 @@ export class BeamSession {
       this.setState({ sas });
     }
     this.setState({ phase: "connected" });
-
-    // A reconnect wiped `sender` (setupPeerConnection()) without the transfer
-    // itself finishing -- restart it now that there's a connection to send on.
-    if (this.pendingOutgoingTransfer && this.sender === null) {
-      this.startOutgoingTransfer(this.pendingOutgoingTransfer.transferId, this.pendingOutgoingTransfer.files);
-    }
   }
 
   private fail(message: string): void {

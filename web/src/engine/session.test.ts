@@ -542,8 +542,12 @@ describe("outgoing transfer resume across a reconnect", () => {
     signalingInstances[0].options.onPeerJoined?.({ type: "peer_joined", peer_id: "peer-other", role: "joiner" });
     expect(peerInstances).toHaveLength(2);
 
-    // The new peer connection reaching "connected" is what triggers the restart.
-    await peerInstances[1].options.onConnectionStateChange?.("connected");
+    // The new peer connection's control channel reopening is what triggers the
+    // restart -- not merely the RTCPeerConnection reaching "connected" (which
+    // doesn't itself guarantee the negotiated data channels are open yet; a real
+    // send() before that throws, caught only by a real browser -- see
+    // onControlChannelOpen's comment in session.ts).
+    peerInstances[1].options.onControlChannelOpen?.(peerInstances[1].controlChannel as unknown as RTCDataChannel);
     await vi.waitFor(() => expect(offerFilesTransferId(peerInstances[1].controlChannel.send)).toBeTruthy());
 
     expect(offerFilesTransferId(peerInstances[1].controlChannel.send)).toBe(firstTransferId);
@@ -562,7 +566,7 @@ describe("outgoing transfer resume across a reconnect", () => {
     expect(session.getState().outgoingTransfer?.phase).toBe("declined");
 
     signalingInstances[0].options.onPeerJoined?.({ type: "peer_joined", peer_id: "peer-other", role: "joiner" });
-    await peerInstances[1].options.onConnectionStateChange?.("connected");
+    peerInstances[1].options.onControlChannelOpen?.(peerInstances[1].controlChannel as unknown as RTCDataChannel);
     // Give any (incorrect) restart a chance to happen before asserting it didn't.
     await new Promise((resolve) => setTimeout(resolve, 0));
 
