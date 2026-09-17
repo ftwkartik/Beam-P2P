@@ -100,3 +100,46 @@ jobs:
 
       - name: Build web image
         run: docker build -f web/Dockerfile -t beam-web:ci .
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No API keys or paid services (see .env.example) -- just random local secrets.
+      - name: Generate secrets
+        run: cp .env.example .env && ./scripts/gen_secrets.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Install Playwright's browser
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      # playwright.config.ts's webServer brings up the full compose stack itself
+      # (server, nginx, Redis, coturn) since CI never reuses an existing one, waits
+      # for /health, runs the suite, then tears it down.
+      - name: Run the E2E suite
+        working-directory: web
+        run: npx playwright test
+
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: web/test-results
+          retention-days: 7
+
+      - name: Compose logs on failure
+        if: failure()
+        run: docker compose logs || true

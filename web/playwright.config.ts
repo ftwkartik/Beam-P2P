@@ -30,7 +30,9 @@ export default defineConfig({
     command: "docker compose -f ../docker-compose.yml up --build",
     url: "http://localhost:8080/health",
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
+    // A cold CI runner has no image-layer cache, so a from-scratch --build of both
+    // the server and web images needs real headroom beyond a warm local rebuild.
+    timeout: 300_000,
   },
   projects: [
     {
