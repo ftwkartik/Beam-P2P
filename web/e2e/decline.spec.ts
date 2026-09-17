@@ -1,12 +1,10 @@
-import { expect, test } from "@playwright/test";
-
-import { createRoom, joinRoom, makeRandomFile, waitForConnected } from "./fixtures";
+import { createRoom, expect, joinRoom, makeRandomFile, test, waitForConnected } from "./fixtures";
 
 test("scenario 3: declining a transfer tells the sender and the receiver never shows a save link", async ({
-  browser,
+  newPage,
 }) => {
-  const sender = await browser.newPage();
-  const receiver = await browser.newPage();
+  const sender = await newPage();
+  const receiver = await newPage();
 
   const code = await createRoom(sender);
   await joinRoom(receiver, code);

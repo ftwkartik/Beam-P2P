@@ -1,12 +1,10 @@
-import { expect, test } from "@playwright/test";
-
-import { createRoom, hashDownloadLink, joinRoom, makeRandomFile, waitForConnected } from "./fixtures";
+import { createRoom, expect, hashDownloadLink, joinRoom, makeRandomFile, test, waitForConnected } from "./fixtures";
 
 test.describe("resume", () => {
-  test("scenario 4: a network drop mid-transfer recovers and completes", async ({ browser }) => {
+  test("scenario 4: a network drop mid-transfer recovers and completes", async ({ newPage, newPeerContext }) => {
     test.setTimeout(120_000);
-    const sender = await browser.newPage();
-    const receiverContext = await browser.newContext();
+    const sender = await newPage();
+    const receiverContext = await newPeerContext();
     const receiver = await receiverContext.newPage();
 
     const code = await createRoom(sender);
@@ -32,10 +30,10 @@ test.describe("resume", () => {
     expect(actualHash).toBe(file.sha256);
   });
 
-  test("scenario 5: a receiver reload mid-transfer resumes from the persisted bitmap", async ({ browser }) => {
+  test("scenario 5: a receiver reload mid-transfer resumes from the persisted bitmap", async ({ newPage }) => {
     test.setTimeout(120_000);
-    const sender = await browser.newPage();
-    const receiver = await browser.newPage();
+    const sender = await newPage();
+    const receiver = await newPage();
 
     const code = await createRoom(sender);
     await joinRoom(receiver, code);

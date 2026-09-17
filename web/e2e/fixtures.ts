@@ -3,8 +3,45 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { Page } from "@playwright/test";
-import { expect } from "@playwright/test";
+import type { BrowserContext, Page } from "@playwright/test";
+import { test as base, expect } from "@playwright/test";
+
+export { expect };
+
+interface PeerFixtures {
+  /** Opens a page in its own fresh context, tracked for automatic cleanup after the
+   * test (pass or fail). Every scenario here plays two "devices" via
+   * `browser.newPage()`/`browser.newContext()`, which Playwright's own built-in
+   * `page` fixture doesn't manage -- a page opened that way is never closed unless
+   * the test does it itself. A leaked page holds real WebRTC resources (open
+   * RTCPeerConnections, their UDP ports, a live signaling WebSocket), and since a
+   * worker reuses one browser process across all its tests, those piled up and
+   * later tests in the same run started failing to connect at all. Found while
+   * chasing Milestone 9's E2E flakiness -- a test-suite bug, not a product one. */
+  newPage: () => Promise<Page>;
+  newPeerContext: () => Promise<BrowserContext>;
+}
+
+export const test = base.extend<PeerFixtures>({
+  newPage: async ({ browser }, use) => {
+    const pages: Page[] = [];
+    await use(async () => {
+      const page = await browser.newPage();
+      pages.push(page);
+      return page;
+    });
+    await Promise.all(pages.map((p) => p.close().catch(() => undefined)));
+  },
+  newPeerContext: async ({ browser }, use) => {
+    const contexts: BrowserContext[] = [];
+    await use(async () => {
+      const context = await browser.newContext();
+      contexts.push(context);
+      return context;
+    });
+    await Promise.all(contexts.map((c) => c.close().catch(() => undefined)));
+  },
+});
 
 /** Creates a room from a fresh HomePage and returns its share code. */
 export async function createRoom(page: Page): Promise<string> {

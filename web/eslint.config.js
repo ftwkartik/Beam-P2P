@@ -37,4 +37,17 @@ export default tseslint.config(
       globals: { ...globals.node, ...globals.browser },
     },
   },
+  {
+    // Playwright specs, not React: `react-hooks/rules-of-hooks` false-positives on
+    // Playwright's own fixture convention, `async (fixtures, use) => {...}` -- `use`
+    // isn't a React hook here.
+    files: ["e2e/**/*.ts"],
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+      "react-refresh/only-export-components": "off",
+    },
+  },
 );

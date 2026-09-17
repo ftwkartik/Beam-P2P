@@ -3,9 +3,7 @@ import { basename, join } from "node:path";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-import { expect, test } from "@playwright/test";
-
-import { createRoom, hashDownloadLink, joinRoom, waitForConnected } from "./fixtures";
+import { createRoom, expect, hashDownloadLink, joinRoom, test, waitForConnected } from "./fixtures";
 
 /** A small folder with a nested subdirectory, so the manifest's relative-path
  * handling (buildManifest()'s `file.webkitRelativePath`, docs/security.md §4's path
@@ -32,9 +30,9 @@ function makeFolder(): { dir: string; files: { relPath: string; sha256: string }
   return { dir, files };
 }
 
-test("scenario 2: a folder with a nested path transfers every file intact", async ({ browser }) => {
-  const sender = await browser.newPage();
-  const receiver = await browser.newPage();
+test("scenario 2: a folder with a nested path transfers every file intact", async ({ newPage }) => {
+  const sender = await newPage();
+  const receiver = await newPage();
 
   const code = await createRoom(sender);
   await joinRoom(receiver, code);

@@ -1,13 +1,11 @@
-import { expect, test } from "@playwright/test";
-
-import { createRoom, getSas, hashDownloadLink, joinRoom, makeRandomFile, waitForConnected } from "./fixtures";
+import { createRoom, expect, getSas, hashDownloadLink, joinRoom, makeRandomFile, test, waitForConnected } from "./fixtures";
 
 test.describe("full transfer, sender to receiver", () => {
   test("scenario 1: a multi-megabyte file transfers intact and both sides agree on the SAS", async ({
-    browser,
+    newPage,
   }) => {
-    const sender = await browser.newPage();
-    const receiver = await browser.newPage();
+    const sender = await newPage();
+    const receiver = await newPage();
 
     const code = await createRoom(sender);
     await joinRoom(receiver, code);
