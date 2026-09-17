@@ -182,6 +182,50 @@ describe("welcome handling", () => {
     expect(peerInstances).toHaveLength(1);
     expect(peerInstances[0].options.polite).toBe(true);
   });
+
+  it("forces relay-only ICE when ?forceRelay=1 is set (E2E TURN scenario only)", async () => {
+    const originalUrl = window.location.href;
+    window.history.pushState({}, "", "/?forceRelay=1");
+    try {
+      const { session, signalingInstances, peerInstances } = buildFakeApi();
+      await session.createRoom();
+      signalingInstances[0].options.onWelcome?.({
+        type: "welcome",
+        peer_id: "peer-me",
+        room_id: "room-1",
+        role: "joiner",
+        polite: true,
+        peers: [
+          { peer_id: "peer-me", role: "joiner", state: "online" },
+          { peer_id: "peer-other", role: "creator", state: "online" },
+        ],
+        expires_at: "2026-01-01T00:00:00Z",
+      });
+
+      expect(peerInstances[0].options.iceTransportPolicy).toBe("relay");
+    } finally {
+      window.history.pushState({}, "", originalUrl);
+    }
+  });
+
+  it("does not force relay-only ICE without the query param", async () => {
+    const { session, signalingInstances, peerInstances } = buildFakeApi();
+    await session.createRoom();
+    signalingInstances[0].options.onWelcome?.({
+      type: "welcome",
+      peer_id: "peer-me",
+      room_id: "room-1",
+      role: "joiner",
+      polite: true,
+      peers: [
+        { peer_id: "peer-me", role: "joiner", state: "online" },
+        { peer_id: "peer-other", role: "creator", state: "online" },
+      ],
+      expires_at: "2026-01-01T00:00:00Z",
+    });
+
+    expect(peerInstances[0].options.iceTransportPolicy).toBeUndefined();
+  });
 });
 
 describe("peer_joined / peer_reconnecting / peer_left", () => {

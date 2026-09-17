@@ -43,9 +43,11 @@ export const test = base.extend<PeerFixtures>({
   },
 });
 
-/** Creates a room from a fresh HomePage and returns its share code. */
-export async function createRoom(page: Page): Promise<string> {
-  await page.goto("/");
+/** Creates a room from a fresh HomePage and returns its share code. `query`, if
+ * given, is a query string (no leading `?`) appended before any hash -- e.g.
+ * "forceRelay=1" for the TURN-relay scenario (session.ts's forcedIceTransportPolicy). */
+export async function createRoom(page: Page, query?: string): Promise<string> {
+  await page.goto(query ? `/?${query}` : "/");
   await page.getByRole("button", { name: "Create a room" }).click();
   await expect(page.getByText("Share this with the other device")).toBeVisible({ timeout: 15_000 });
   const code = (await page.locator("p.font-mono").first().textContent())?.trim();
@@ -54,9 +56,9 @@ export async function createRoom(page: Page): Promise<string> {
 }
 
 /** Joins a room via the share-link route (`/r#<code>`), the same path a real shared
- * link takes -- not the HomePage's manual code-entry form. */
-export async function joinRoom(page: Page, code: string): Promise<void> {
-  await page.goto(`/r#${code}`);
+ * link takes -- not the HomePage's manual code-entry form. See `createRoom` re `query`. */
+export async function joinRoom(page: Page, code: string, query?: string): Promise<void> {
+  await page.goto(query ? `/r?${query}#${code}` : `/r#${code}`);
   await page.getByRole("button", { name: "Join room" }).click();
 }
 

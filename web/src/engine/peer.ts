@@ -25,6 +25,10 @@ export type PeerSignal = SdpSignal | IceSignal;
 export interface PeerConnectionOptions {
   polite: boolean;
   iceServers: RTCIceServer[];
+  /** Forces relay-only candidates when set (docs/testing-strategy.md's TURN E2E
+   * scenario: prove a transfer actually completes through coturn, not just that a
+   * credential can be minted). Never set by default. */
+  iceTransportPolicy?: RTCIceTransportPolicy;
   onSendSignal: (data: PeerSignal) => void;
   onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
   onControlChannelOpen?: (channel: RTCDataChannel) => void;
@@ -56,7 +60,7 @@ export class PeerConnection {
   constructor(options: PeerConnectionOptions) {
     this.options = options;
     const factory = options.rtcFactory ?? ((config: RTCConfiguration) => new RTCPeerConnection(config));
-    this.pc = factory({ iceServers: options.iceServers });
+    this.pc = factory({ iceServers: options.iceServers, iceTransportPolicy: options.iceTransportPolicy });
 
     this.controlChannel = this.pc.createDataChannel("control", {
       negotiated: true,

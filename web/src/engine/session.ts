@@ -141,6 +141,15 @@ function defaultStorageFactory(transferId: string): TransferStorage {
   return opfsAvailable ? new OpfsStorage(transferId) : new MemoryStorage();
 }
 
+/** `?forceRelay=1` forces relay-only ICE candidates, for the E2E suite's TURN
+ * scenario (docs/testing-strategy.md: prove a transfer actually completes through
+ * coturn, not just that a credential can be minted). Never a normal user-facing
+ * setting -- there is no UI for it. */
+function forcedIceTransportPolicy(): RTCIceTransportPolicy | undefined {
+  if (typeof window === "undefined") return undefined;
+  return new URLSearchParams(window.location.search).get("forceRelay") === "1" ? "relay" : undefined;
+}
+
 export class BeamSession {
   private readonly api: ApiClient;
   private readonly signalingFactory: (options: SignalingClientOptions) => SignalingClient;
@@ -337,6 +346,7 @@ export class BeamSession {
     this.peerConnection = this.peerConnectionFactory({
       polite: this.polite,
       iceServers: this.iceServers,
+      iceTransportPolicy: forcedIceTransportPolicy(),
       onSendSignal: (data) => this.signaling?.send({ type: "signal", data }),
       onConnectionStateChange: (rtcState) => {
         if (rtcState === "connected") void this.handleConnected();
