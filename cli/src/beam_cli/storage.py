@@ -100,8 +100,22 @@ class FilesystemStorage:
     def _state_path(self, file_index: int) -> Path:
         return self._partial_dir / f"{file_index}.state.json"
 
+    def _accepted_marker_path(self) -> Path:
+        return self._partial_dir / "accepted"
+
     async def open_file(self, file_index: int, size: int) -> FileStorageHandle:
         return FileStorageHandle(self._partial_path(file_index), size)
+
+    def was_accepted(self) -> bool:
+        """Whether this transfer id was already accepted before -- lets a resumed
+        `offer_files` (the sender re-offering after a reconnect, same transfer id)
+        skip re-prompting the user for consent."""
+        return self._accepted_marker_path().exists()
+
+    def mark_accepted(self) -> None:
+        marker = self._accepted_marker_path()
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
 
     def load_state(self, file_index: int) -> PersistedFileState | None:
         path = self._state_path(file_index)

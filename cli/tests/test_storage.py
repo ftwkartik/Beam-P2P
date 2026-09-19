@@ -120,6 +120,20 @@ def test_clear_transfer_removes_partial_dir_but_not_finished_files(tmp_path: Pat
     assert finished.exists()
 
 
+def test_accepted_marker_round_trips(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path, "t1")
+    assert storage.was_accepted() is False
+    storage.mark_accepted()
+    assert storage.was_accepted() is True
+
+
+def test_clear_transfer_removes_the_accepted_marker_too(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path, "t1")
+    storage.mark_accepted()
+    storage.clear_transfer()
+    assert storage.was_accepted() is False
+
+
 def test_two_transfers_have_independent_partial_dirs(tmp_path: Path) -> None:
     a = FilesystemStorage(tmp_path, "transfer-a")
     b = FilesystemStorage(tmp_path, "transfer-b")
