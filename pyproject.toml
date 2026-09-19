@@ -37,6 +37,9 @@ ignore = ["S101"]  # allow assert (used in tests and defensive checks)
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101", "S105", "S106"]  # asserts and dummy secrets in tests
+# Typer's own recommended pattern is typer.Argument(...)/typer.Option(...) as a
+# parameter default; bugbear's "no function calls in defaults" doesn't apply to it.
+"cli/src/beam_cli/main.py" = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"
