@@ -30,9 +30,19 @@ def test_frame_magic_is_two_bytes() -> None:
     assert len(FRAME_MAGIC) == 2
 
 
-def test_block_size_is_a_multiple_of_frame_payload_size() -> None:
-    # Frames must never cross block boundaries (docs/protocol.md §4.2).
-    assert DEFAULT_BLOCK_SIZE % DEFAULT_FRAME_PAYLOAD_SIZE == 0
+def test_frame_payload_size_fits_within_aiortcs_default_max_message_size() -> None:
+    # aiortc's default SCTP maxMessageSize is exactly 65536; a full header+payload
+    # frame must stay at or under that or a real browser peer refuses to send/deliver
+    # it (see constants.py's DEFAULT_FRAME_PAYLOAD_SIZE docstring).
+    assert DEFAULT_FRAME_PAYLOAD_SIZE + FRAME_HEADER_SIZE <= 65536
+
+
+def test_block_size_is_not_smaller_than_one_frame() -> None:
+    # docs/protocol.md §4.2: frames never cross block boundaries -- the last frame of
+    # a block that isn't an exact multiple of the frame size is simply smaller, which
+    # Frame/BlockMessage's construction already handles; this just checks the sizes
+    # are sane relative to each other, not that they divide evenly.
+    assert DEFAULT_BLOCK_SIZE >= DEFAULT_FRAME_PAYLOAD_SIZE
 
 
 def test_size_limits_are_sane_and_ordered() -> None:

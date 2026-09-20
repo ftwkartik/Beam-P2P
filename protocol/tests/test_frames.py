@@ -74,7 +74,12 @@ def test_unpack_bad_version_raises() -> None:
 
 
 def test_frames_never_cross_block_boundary_by_construction() -> None:
-    """Sanity check on the constants used to compute frames-per-block elsewhere."""
+    """A block's frames are computed by slicing its own bytes in frame_size steps
+    (sender.py's `_send_frames`), so the last frame is simply shorter when the block
+    size isn't an exact multiple -- there's nothing here to cross a boundary with."""
     from beam_protocol.constants import DEFAULT_BLOCK_SIZE, DEFAULT_FRAME_PAYLOAD_SIZE
 
-    assert DEFAULT_BLOCK_SIZE % DEFAULT_FRAME_PAYLOAD_SIZE == 0
+    block = b"x" * DEFAULT_BLOCK_SIZE
+    offsets = list(range(0, len(block), DEFAULT_FRAME_PAYLOAD_SIZE))
+    total = sum(len(block[o : o + DEFAULT_FRAME_PAYLOAD_SIZE]) for o in offsets)
+    assert total == DEFAULT_BLOCK_SIZE

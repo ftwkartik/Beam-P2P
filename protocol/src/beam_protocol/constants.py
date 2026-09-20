@@ -21,11 +21,18 @@ MAX_ICE_CANDIDATE_BYTES: int = 1024
 #: Default size, in bytes, of one transfer block (see docs/protocol.md §4).
 DEFAULT_BLOCK_SIZE: int = 1024 * 1024
 
-#: Default payload size, in bytes, of one binary data-channel frame.
-DEFAULT_FRAME_PAYLOAD_SIZE: int = 64 * 1024
-
 #: Size, in bytes, of the binary frame header (magic, version, flags, file index, offset).
 FRAME_HEADER_SIZE: int = 16
+
+#: Default payload size, in bytes, of one binary data-channel frame. Kept 16 bytes
+#: under 64 KiB, not at it: aiortc's default SCTP maxMessageSize is exactly 65536
+#: (RTCSctpTransport.get_capabilities()), and a full-size header+payload frame at a
+#: flat 64 KiB payload is 65552 bytes -- 16 over that. Two aiortc peers tolerate the
+#: overage (neither enforces it against the other), which is why CLI<->CLI transfers
+#: never caught this, but a real browser correctly refuses to send/deliver a message
+#: exceeding the peer's declared max-message-size, silently stalling the transfer.
+#: Found by actually running the CLI against a browser, not by inspection.
+DEFAULT_FRAME_PAYLOAD_SIZE: int = 64 * 1024 - FRAME_HEADER_SIZE
 
 #: Magic bytes identifying a Beam binary frame ("BM").
 FRAME_MAGIC: bytes = b"\x42\x4d"

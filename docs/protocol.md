@@ -136,10 +136,16 @@ offset  size  field
 3       1     flags (bit0 = last frame of block)
 4       4     file index        (uint32, big-endian)
 8       8     byte offset       (uint64, big-endian) within the file
-16      n     payload           (n ≤ max_frame − 16; default frame = 64 KiB payload + 16 B header)
+16      n     payload           (n ≤ max_frame − 16; default frame = 65520 B payload + 16 B header)
 ```
 
-- Frames never cross block boundaries, so a block is `block_size / 65536` frames (16 for 1 MiB).
+Default payload is 65520 bytes, not a flat 64 KiB: aiortc's default SCTP `maxMessageSize` is exactly
+65536, so a full header+payload frame at a flat 64 KiB payload would be 65552 bytes -- 16 over. Two
+aiortc peers tolerate sending that to each other, but a real browser correctly refuses to send or
+deliver a message exceeding the peer's declared max-message-size, which silently stalls the transfer.
+
+- Frames never cross block boundaries, so a block is `ceil(block_size / 65520)` frames (17 for 1 MiB, the
+  last one 16 bytes).
 - The receiver writes each payload at `offset`. Duplicates (after a retry) are idempotent.
 - The sender pauses when `bufferedAmount > 4 MiB` and resumes on `bufferedamountlow` (threshold 1 MiB).
 

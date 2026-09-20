@@ -7,7 +7,7 @@
 
 import type { AcceptMessage, FileOffer, NackMessage, PeerMessage } from "../../protocol/generated/peer-message";
 import { BlockBitmap } from "./bitmap";
-import { createFrame, packFrame } from "./framing";
+import { FRAME_HEADER_SIZE, createFrame, packFrame } from "./framing";
 import { deriveFileRootHash, hashBytes, hashBytesHex } from "./hashing";
 import type { ControlChannelLike, DataChannelLike } from "./channels";
 import { DEFAULT_BLOCK_SIZE, buildManifest } from "./manifest";
@@ -15,7 +15,13 @@ import { DEFAULT_BLOCK_SIZE, buildManifest } from "./manifest";
 /** docs/protocol.md §4.2: the sender pauses above this and resumes at the data
  * channel's `bufferedamountlow` threshold (set by peer.ts when creating the channel). */
 export const HIGH_WATERMARK_BYTES = 4 * 1024 * 1024;
-export const DEFAULT_FRAME_PAYLOAD_SIZE = 64 * 1024;
+/** 16 bytes under 64 KiB, not at it -- aiortc's default SCTP maxMessageSize is
+ * exactly 65536, and a full header+payload frame at a flat 64 KiB payload is 65552
+ * bytes, 16 over that. A real browser correctly refuses to send/deliver a message
+ * exceeding the peer's declared max-message-size (unlike two aiortc peers, which
+ * tolerate the overage against each other); see beam_protocol.constants's matching
+ * value for the CLI side of this same fix. */
+export const DEFAULT_FRAME_PAYLOAD_SIZE = 64 * 1024 - FRAME_HEADER_SIZE;
 const MAX_BLOCK_RETRIES = 3;
 
 export type SenderPhase =
