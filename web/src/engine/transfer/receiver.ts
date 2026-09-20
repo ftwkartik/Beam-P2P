@@ -232,8 +232,18 @@ export class TransferReceiver {
   }
 
   private handleBlockAnnouncement(message: BlockMessage): void {
-    void this.ensureFileState(message.file).then((state) => {
+    void this.ensureFileState(message.file).then(async (state) => {
       state.announcedBlockHashes.set(message.index, message.sha256);
+      // The block's frame(s) can finish writing before this announcement arrives --
+      // they're delivered on separate promise chains, and for a single-frame block
+      // there's very little time for this one to win the race. verifyBlock() no-ops
+      // until both pieces are in, so re-check here too, not just from processFrame();
+      // this is the "re-checked once it does" this used to just promise in a comment
+      // without ever doing it.
+      const { start, end } = this.blockRange(state, message.index);
+      if ((state.bytesReceivedByBlock.get(message.index) ?? 0) >= end - start) {
+        await this.verifyBlock(state, message.index, start, end);
+      }
     });
   }
 
@@ -267,6 +277,12 @@ export class TransferReceiver {
   }
 
   private async verifyBlock(state: FileState, blockIndex: number, start: number, end: number): Promise<void> {
+    if (state.bitmap.has(blockIndex)) {
+      // Both the frame-arrival and announcement-arrival paths can end up calling
+      // this for the same block once the other condition is already met; harmless
+      // to skip since the block's already verified.
+      return;
+    }
     const announced = state.announcedBlockHashes.get(blockIndex);
     if (!announced) return; // the block message hasn't arrived yet; re-checked once it does
 
