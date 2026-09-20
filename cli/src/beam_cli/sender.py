@@ -75,6 +75,14 @@ class TransferSender:
     _have_by_file: dict[int, BlockBitmap] = field(default_factory=dict, init=False)
     _retries_by_block: dict[tuple[int, int], int] = field(default_factory=dict, init=False)
     _pending_resends: list[NackMessage] = field(default_factory=list, init=False)
+    #: Whether `_send_all_files` has sent every block plus `transfer_done`. The phase
+    #: doesn't become "completed" until this AND every file has also been verified --
+    #: `data.send()` only queues bytes for the SCTP layer, it doesn't confirm the
+    #: receiver got them, so treating "queued everything" as done and closing the
+    #: connection right after (as a CLI invocation that's about to exit must) can
+    #: discard data still in flight. Waiting for `file_verified` is the actual proof.
+    _all_blocks_sent: bool = field(default=False, init=False)
+    _verified_files: set[int] = field(default_factory=set, init=False)
     _resend_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
     #: Holds references to fire-and-forget tasks so asyncio doesn't garbage-collect
     #: them mid-flight (a bare `asyncio.ensure_future(...)` with nothing else
@@ -120,6 +128,9 @@ class TransferSender:
             if not message.ok:
                 self._set_phase("failed")
                 self._error(f"File {message.file} failed verification")
+                return
+            self._verified_files.add(message.file)
+            self._maybe_complete()
         elif isinstance(message, CancelMessage):
             self._set_phase("cancelled")
 
@@ -143,10 +154,19 @@ class TransferSender:
                 await self._send_file(entry)
             if self._phase == "sending":
                 self._send(TransferDoneMessage(transfer_id=self.transfer_id))
-                self._set_phase("completed")
+                self._all_blocks_sent = True
+                self._maybe_complete()
         except Exception as exc:
             self._set_phase("failed")
             self._error(str(exc))
+
+    def _maybe_complete(self) -> None:
+        if (
+            self._phase == "sending"
+            and self._all_blocks_sent
+            and len(self._verified_files) == len(self.entries)
+        ):
+            self._set_phase("completed")
 
     async def _send_file(self, entry: ManifestEntry) -> None:
         offer = entry.offer
