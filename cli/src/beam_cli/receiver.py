@@ -226,6 +226,15 @@ class TransferReceiver:
         async def _apply() -> None:
             state = await self._ensure_file_state(file_index)
             state.announced_block_hashes[block_index] = sha256
+            # The block's frame(s) can finish writing before this announcement arrives
+            # -- they're dispatched as independently-scheduled tasks, and for a
+            # single-frame block there's very little time for this one to win the
+            # race. _verify_block() no-ops until both pieces are in, so re-check here
+            # too, not just from _process_frame(); this is the "re-checked once it
+            # does" this used to just promise in a comment without ever doing it.
+            start, end = self._block_range(state, block_index)
+            if state.bytes_received_by_block.get(block_index, 0) >= end - start:
+                await self._verify_block(state, block_index, start, end)
 
         self._spawn(_apply())
 
@@ -257,6 +266,11 @@ class TransferReceiver:
     async def _verify_block(
         self, state: _FileState, block_index: int, start: int, end: int
     ) -> None:
+        if state.bitmap.has(block_index):
+            # Both the frame-arrival and announcement-arrival paths can end up
+            # calling this for the same block once the other condition is already
+            # met; harmless to skip since the block's already verified.
+            return
         announced = state.announced_block_hashes.get(block_index)
         if announced is None:
             return  # the block message hasn't arrived yet; re-checked once it does
