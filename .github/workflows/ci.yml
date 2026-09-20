@@ -111,6 +111,19 @@ jobs:
       - name: Generate secrets
         run: cp .env.example .env && ./scripts/gen_secrets.sh
 
+      # e2e/interop.spec.ts spawns a real `beam` CLI subprocess (via `uv run`)
+      # against the compose stack, alongside the browser -- needs Python/uv on PATH.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages --locked
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

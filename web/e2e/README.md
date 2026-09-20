@@ -19,6 +19,15 @@ PW_NO_SANDBOX=1 npx playwright test                 # PW_NO_SANDBOX only needed 
 `playwright.config.ts`'s `webServer` reuses an already-running stack locally
 (`reuseExistingServer: !process.env.CI`); CI always starts one fresh.
 
+`interop.spec.ts` (Milestone 10) additionally spawns a real `beam` CLI subprocess via
+`uv run`, so it needs the Python workspace set up (`uv sync` from the repo root) and
+`uv` on `PATH`, alongside everything above.
+
+**If you rebuild the web app's source** (`web/src/`), remember `docker compose up`
+without `--build` reuses whatever image is already sitting there -- add `--build` (or
+run just `docker compose up --build -d web`) or the compose stack keeps serving the
+stale bundle while the suite silently exercises old code.
+
 ## Coverage
 
 | # | Scenario | File |
@@ -30,6 +39,8 @@ PW_NO_SANDBOX=1 npx playwright test                 # PW_NO_SANDBOX only needed 
 | 5 | Receiver reload mid-transfer → resumes from the persisted bitmap | `resume.spec.ts` |
 | 6 (equality only) | SAS matches on both sides | asserted inside `happy-path.spec.ts` |
 | 7 | Relay-only transfer forced through coturn | `turn-relay.spec.ts` |
+| 8 | Milestone 10 interop: CLI sends, browser receives | `interop.spec.ts` |
+| 9 | Milestone 10 interop: browser sends, CLI receives | `interop.spec.ts` |
 
 **Deliberately not built: scenario 6's negative half** (an injected fingerprint-
 rewriting proxy proving the SAS *diverges* under a real interception). Naively
