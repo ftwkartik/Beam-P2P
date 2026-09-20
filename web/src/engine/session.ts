@@ -332,10 +332,24 @@ export class BeamSession {
 
   private handlePeerLeft(message: PeerLeftMessage): void {
     if (this.state.otherPeer?.peer_id !== message.peer_id) return;
+    // A peer that has already finished its side of a transfer and hangs up right
+    // after -- which a CLI process does, unlike a browser tab that just stays open
+    // -- makes this arrive in a real, otherwise-harmless race against this side's
+    // own terminal phase transition. Only show the disconnect banner (and blow away
+    // readyFiles/incomingTransfer via initialState-less phase-only update below) for
+    // an actual mid-transfer drop; a peer_left after we'd already finished shouldn't
+    // clobber a completed/failed/etc. result the user is looking at.
+    const alreadyDone =
+      (this.receiver && isReceiverTerminalPhase(this.receiver.getPhase())) ||
+      (this.sender && isSenderTerminalPhase(this.sender.getPhase()));
     this.peerConnection?.close();
     this.peerConnection = null;
     this.sender = null;
     this.receiver = null;
+    if (alreadyDone) {
+      this.setState({ otherPeer: null });
+      return;
+    }
     this.setState({ otherPeer: null, sas: null, phase: "peer_left" });
   }
 
@@ -524,5 +538,9 @@ function errorMessage(err: unknown): string {
 }
 
 function isSenderTerminalPhase(phase: SenderPhase): boolean {
+  return phase === "completed" || phase === "failed" || phase === "cancelled" || phase === "declined";
+}
+
+function isReceiverTerminalPhase(phase: ReceiverPhase): boolean {
   return phase === "completed" || phase === "failed" || phase === "cancelled" || phase === "declined";
 }
