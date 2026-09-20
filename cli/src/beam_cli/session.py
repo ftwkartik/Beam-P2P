@@ -75,12 +75,21 @@ async def _connect_and_pair(
         await joined_event.wait()
 
     peer_ready = asyncio.Event()
+    #: `connectionstatechange` reaching "connected" does not imply the negotiated data
+    #: channels have themselves reached "open" yet (see peer.py) -- callers must not
+    #: send on either channel until both of these are set too.
+    control_open = asyncio.Event()
+    data_open = asyncio.Event()
 
     async def on_send_signal(data: SignalData) -> None:
         await signaling.send_signal(data)
 
     peer = PeerConnection(
-        polite=welcome.polite, ice_servers=ice_servers, on_send_signal=on_send_signal
+        polite=welcome.polite,
+        ice_servers=ice_servers,
+        on_send_signal=on_send_signal,
+        on_control_channel_open=control_open.set,
+        on_data_channel_open=data_open.set,
     )
 
     def on_connected() -> None:
@@ -97,6 +106,8 @@ async def _connect_and_pair(
 
     await peer.start()
     await asyncio.wait_for(peer_ready.wait(), timeout=60)
+    await asyncio.wait_for(control_open.wait(), timeout=60)
+    await asyncio.wait_for(data_open.wait(), timeout=60)
     return peer, signaling
 
 
