@@ -5,12 +5,21 @@ API shape genuinely differs from a browser's, not by choice:
 
 - aiortc never emits `negotiationneeded` at all, so "perfect negotiation" (designed
   around browsers automatically firing it, possibly on both sides at once) doesn't
-  directly apply. Negotiation is driven explicitly instead, and made glare-free by
-  construction: only the impolite (room creator) side ever calls `create_offer()`; the
-  polite (joiner) side only ever answers whatever offer arrives. A browser peer on the
-  other end still runs its own full perfect-negotiation logic, but since the CLI side
-  never independently initiates a competing offer, there is nothing for it to collide
-  with.
+  directly apply the same way: only the impolite (room creator) side ever calls
+  `create_offer()` here, the polite (joiner) side only ever answers. Between two CLI
+  processes that's glare-free by construction, since neither independently starts a
+  competing offer. It is *not* glare-free against a real browser peer, though: a
+  browser's own perfect-negotiation implementation (`peer.ts`) fires its local
+  `negotiationneeded` and sends an offer regardless of its polite/impolite role --
+  politeness there governs collision *resolution*, not whether an offer gets created
+  in the first place, and a polite browser joining a CLI-created room still offers on
+  its own before it ever sees the CLI's offer arrive. The CLI side of that collision
+  is still handled explicitly, mirroring `peer.ts`'s `ignoreOffer` check: an incoming
+  offer that arrives while this (always-impolite, since only impolite ever offers)
+  side has one of its own in flight is dropped rather than processed, exactly like the
+  impolite side of a real perfect-negotiation pair would. Found by actually running
+  the CLI against a browser, not by inspection -- CLI<->CLI has no glare to catch this,
+  since neither side there ever offers unprompted.
 - aiortc's `setLocalDescription()` blocks until ICE gathering is *complete* and embeds
   every candidate directly in the SDP (a plain, spec-compliant non-trickle offer/
   answer) rather than emitting them one at a time via an `icecandidate` event, which
@@ -78,6 +87,10 @@ class PeerConnection:
     pc: RTCPeerConnection = field(init=False, repr=False)
     control_channel: RTCDataChannel = field(init=False, repr=False)
     data_channel: RTCDataChannel = field(init=False, repr=False)
+    #: True while this (always-impolite, when set) side's own offer is in flight --
+    #: mirrors peer.ts's `makingOffer`, used for the glare check in
+    #: `_handle_description` (see the module docstring).
+    _making_offer: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
         config = RTCConfiguration(
@@ -126,9 +139,13 @@ class PeerConnection:
         side -- see the module docstring on why only the impolite side offers."""
         if self.polite:
             return
-        offer = await self.pc.createOffer()
-        await self.pc.setLocalDescription(offer)
-        await self._send_local_description()
+        self._making_offer = True
+        try:
+            offer = await self.pc.createOffer()
+            await self.pc.setLocalDescription(offer)
+            await self._send_local_description()
+        finally:
+            self._making_offer = False
 
     async def handle_signal(self, data: SignalData) -> None:
         if isinstance(data, SdpSignal):
@@ -137,6 +154,19 @@ class PeerConnection:
             await self._handle_candidate(data)
 
     async def _handle_description(self, description: SdpDescription) -> None:
+        collision = description.type == "offer" and (
+            self._making_offer or self.pc.signalingState != "stable"
+        )
+        if not self.polite and collision:
+            # This side never independently backs off (see the module docstring's
+            # glare note) -- an offer colliding with our own in-flight one is simply
+            # dropped, exactly like peer.ts's impolite `ignoreOffer` path. The other
+            # side, if it's a real browser running perfect negotiation, is polite
+            # here (it joined our room) and will accept our offer once it arrives,
+            # rolling back its own; if it's another beam_cli process, this can't
+            # happen at all since the polite side there never offers in the first
+            # place.
+            return
         remote = RTCSessionDescription(sdp=description.sdp, type=description.type)
         await self.pc.setRemoteDescription(remote)
         if description.type == "offer":
