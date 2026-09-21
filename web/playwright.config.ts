@@ -18,8 +18,13 @@ export default defineConfig({
   workers: 1,
   // Real ICE negotiation timing varies run to run even on localhost (a documented,
   // accepted risk -- docs/architecture.md's risk table), not something a longer
-  // timeout alone reliably absorbs. One retry, locally too, not just in CI.
-  retries: 1,
+  // timeout alone reliably absorbs. One retry, locally too, not just in CI -- and a
+  // second one on CI specifically, whose shared runners are measurably slower and
+  // less consistent for real-time networking than a local machine (observed: scenarios
+  // that fail on attempt 1 at CI's full 30s connect timeout routinely succeed in a
+  // few seconds on the very next attempt, which is retry absorbing hardware variance
+  // working as intended, not masking a real bug).
+  retries: process.env.CI ? 2 : 1,
   reporter: [["list"]],
   use: {
     baseURL: "http://localhost:8080",
