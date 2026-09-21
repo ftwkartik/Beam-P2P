@@ -201,8 +201,9 @@ hash matches.
     transfer. Only measured numbers go in the README.
 12. **What stays out of the MVP?** Accounts and history, the encrypted relay fallback, one-to-many, mobile, LAN
     discovery. See `product.md`.
-13. **What from [redacted] is not copied?** In-memory state, server-side chunk acks, header/binary message pairing, cookie
-    identity, Socket.IO. See `reference-analysis.md`.
+13. **What was deliberately avoided?** In-memory-only state, server-side per-chunk acks, a JSON-header-plus-separate-
+    binary-message framing scheme, and cookie-based identity -- see ADR-001 through ADR-006 and ADR-009 for the
+    reasoning behind each.
 
 ## 7. Risks and trade-offs
 

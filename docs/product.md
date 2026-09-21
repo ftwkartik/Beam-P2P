@@ -60,24 +60,24 @@ silently intercept the connection.
 
 Mobile PWA share target, LAN-only discovery (mDNS), transfer speed tests, desktop tray app, end-to-end encrypted chat in rooms.
 
-## Comparison
+## Capabilities
 
-| Capability | [redacted] | Beam |
-|---|---|---|
-| Backend | Node/Express/Socket.IO, one file | Python/FastAPI native WebSocket, layered |
-| State | Process memory | Redis with TTLs (+ Postgres for accounts, Advanced) |
-| Multiple server instances | ✗ | ✓ Redis pub/sub fan-out, tested with 2 replicas |
-| Room code | 8 chars, unthrottled | Number + 3 EFF words (~45 bits), hashed at rest, rate-limited, expiring |
-| Auth to signaling | Anonymous cookie | Signed short-lived room token (first WS message) |
-| NAT traversal | STUN only | STUN + TURN (ephemeral creds) + ICE restart |
-| Large files | RAM-bound (whole file in memory) | Streamed to disk (OPFS / filesystem) |
-| Integrity | None | Per-block SHA-256 + file root hash |
-| Resume | Server-memory ack table | Peer-to-peer, survives server restart and receiver reload |
-| Consent | Auto-accept | Accept/decline with a preview |
-| MITM detection | ✗ | Emoji SAS from DTLS fingerprints |
-| Clients | Browser | Browser + Python CLI (interoperable) |
-| Tests / CI / Docker | ✗ | pytest, Vitest, Playwright E2E, benchmarks, compose, GitHub Actions |
-| Observability | console.log | structlog, health/ready, Prometheus |
+| Area | Beam |
+|---|---|
+| Backend | Python/FastAPI native WebSocket, layered (routes → services → repositories) |
+| State | Redis with TTLs (+ Postgres for accounts, Advanced) |
+| Multiple server instances | ✓ Redis pub/sub fan-out, tested with 2 replicas |
+| Room code | Number + 3 EFF words (~45 bits), hashed at rest, rate-limited, expiring |
+| Auth to signaling | Signed short-lived room token (first WS message) |
+| NAT traversal | STUN + TURN (ephemeral creds) + ICE restart |
+| Large files | Streamed to disk (OPFS / filesystem), never buffered whole in memory |
+| Integrity | Per-block SHA-256 + file root hash |
+| Resume | Peer-to-peer, survives server restart and receiver reload |
+| Consent | Accept/decline with a preview |
+| MITM detection | Emoji SAS from DTLS fingerprints |
+| Clients | Browser + Python CLI (interoperable) |
+| Tests / CI / Docker | pytest, Vitest, Playwright E2E, benchmarks, compose, GitHub Actions |
+| Observability | structlog, health/ready, Prometheus |
 
 ## Non-goals
 

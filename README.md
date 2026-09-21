@@ -4,9 +4,8 @@ Send files directly between devices — browser to browser, or terminal to brows
 over an encrypted peer-to-peer connection. No account required, no size limit but your
 disk, and every block is verified.
 
-This is a from-scratch, production-quality redesign of the idea behind
-[[redacted]](https://github.com/[redacted]/[redacted]). See `docs/reference-analysis.md` for
-what [redacted] actually is and what changed, and `docs/roadmap.md` for the build plan.
+This is a from-scratch, production-quality peer-to-peer file-transfer app. See
+`docs/roadmap.md` for the build plan.
 
 > **Status:** in progress (Milestone 1 of 12 — see `docs/roadmap.md`). This README is
 > a working stub; the full version is written in Milestone 12.
@@ -28,7 +27,6 @@ No API keys or paid services are required anywhere in this project.
 
 | Doc | Contents |
 |---|---|
-| [docs/reference-analysis.md](docs/reference-analysis.md) | What [redacted] is, and the lessons carried into Beam |
 | [docs/product.md](docs/product.md) | Product scope, user journey, feature tiers |
 | [docs/architecture.md](docs/architecture.md) | System design, key flows, engineering Q&A |
 | [docs/protocol.md](docs/protocol.md) | The signaling and peer wire protocols |

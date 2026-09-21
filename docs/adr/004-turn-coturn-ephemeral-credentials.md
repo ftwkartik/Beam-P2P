@@ -4,9 +4,9 @@
 - **Date:** 2026-08-06
 
 ## Context
-Direct WebRTC connections fail behind symmetric NATs and restrictive firewalls. [redacted] uses only Google's public STUN
-server, so those users cannot transfer at all. A TURN server relays traffic, which costs bandwidth, so it must not be
-usable by arbitrary parties or as a network pivot.
+Direct WebRTC connections fail behind symmetric NATs and restrictive firewalls. STUN alone (even a public server)
+cannot help those users connect at all. A TURN server relays traffic, which costs bandwidth, so it must not be usable
+by arbitrary parties or as a network pivot.
 
 ## Decision
 Run **coturn** in compose. The API mints **time-limited credentials** (TURN REST API convention, HMAC-SHA1 with a

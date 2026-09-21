@@ -4,7 +4,7 @@
 - **Date:** 2026-08-06
 
 ## Context
-[redacted] accumulates every chunk in memory and builds a Blob at the end, so memory scales with file size and large
+Accumulating every chunk in memory and building a Blob at the end makes memory scale with file size, and large
 transfers crash the tab. Resume across reloads also needs data to persist.
 
 ## Decision
@@ -16,7 +16,7 @@ receiver checks `navigator.storage.estimate()` and requests `persist()`. Stale p
 (older than 7 days).
 
 ## Alternatives
-- **In-memory Blob parts:** simple, but RAM-bound (the [redacted] problem).
+- **In-memory Blob parts:** simple, but RAM-bound -- large transfers crash the tab.
 - **File System Access API only (write directly to a user file):** ideal on Chromium, but unavailable in Firefox and Safari, and resume after a reload needs re-permission.
 - **Service Worker streaming download (StreamSaver.js pattern):** no resume, and fragile across browsers.
 - **IndexedDB blob chunks:** works everywhere, but slower and with high write amplification for GB-scale data.

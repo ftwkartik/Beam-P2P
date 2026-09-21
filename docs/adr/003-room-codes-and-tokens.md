@@ -5,7 +5,8 @@
 
 ## Context
 The code is the only thing a recipient needs, so it must be easy to read aloud and type, yet resistant to guessing.
-[redacted] uses 8 random characters with unlimited join attempts and cookie identity.
+A short random-character code with unlimited join attempts and cookie-based identity is easy to build but easy to
+guess and hard to read aloud.
 
 ## Decision
 - Code = public **nameplate** (small integer) + **3 EFF-wordlist words** (~38.8 bits of secret).
@@ -15,7 +16,7 @@ The code is the only thing a recipient needs, so it must be easy to read aloud a
 - Share links put the code in the URL fragment.
 
 ## Alternatives
-- **Random alphanumerics ([redacted]):** hard to read aloud, with worse ergonomics for the same entropy.
+- **Random alphanumerics:** hard to read aloud, with worse ergonomics for the same entropy.
 - **Numeric PINs:** far too little entropy unless attempts are tiny, and poor UX at safe lengths.
 - **Cookies/sessions for identity:** implicit and CSRF/CSWSH-prone. They don't work well for the CLI.
 - **PAKE (SPAKE2) immediately:** the strongest option (the server never learns the words), but it needs a careful

@@ -6,7 +6,7 @@
 ## Context
 WebRTC encrypts data channels with DTLS, but peers learn each other's certificate fingerprints *through the
 signaling server*. A malicious or compromised server could substitute its own fingerprints and man-in-the-middle the
-connection invisibly. [redacted] has no defense against this.
+connection invisibly, and a signaling relay with no defense against this leaves every transfer silently exposed.
 
 ## Decision
 Both peers derive a **40-bit SAS** from `room_id` and the sorted pair of DTLS fingerprints they *actually*

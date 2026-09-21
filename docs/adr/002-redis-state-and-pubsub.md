@@ -4,9 +4,9 @@
 - **Date:** 2026-08-06
 
 ## Context
-[redacted] keeps every room in process memory, so it cannot restart without losing rooms and cannot run more than one
-instance. Beam's MVP state (rooms, presence, attempt counters, rate limits) is short-lived and naturally expressed with
-TTLs. Peers of one room may connect to different server instances.
+A single in-process map of rooms cannot restart without losing them and cannot run on more than one instance. Beam's
+MVP state (rooms, presence, attempt counters, rate limits) is short-lived and naturally expressed with TTLs. Peers of
+one room may connect to different server instances.
 
 ## Decision
 - **Redis** holds all shared MVP state with TTLs on every key. Multi-key transitions (join, burn, close) use Lua scripts for atomicity.

@@ -1,10 +1,9 @@
 """Application settings.
 
-All configuration is environment-driven (twelve-factor style) via pydantic-settings.
-Nothing is hardcoded the way [redacted] hardcodes its PORT and CORS origins (see
-docs/reference-analysis.md). Secrets are `SecretStr` and are validated for strength
-outside test environments so a weak or default secret can never reach production
-silently (see docs/security.md, "Secrets and error handling").
+All configuration is environment-driven (twelve-factor style) via pydantic-settings --
+nothing is hardcoded. Secrets are `SecretStr` and are validated for strength outside
+test environments so a weak or default secret can never reach production silently
+(see docs/security.md, "Secrets and error handling").
 """
 
 from functools import lru_cache

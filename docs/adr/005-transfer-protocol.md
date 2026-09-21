@@ -4,8 +4,9 @@
 - **Date:** 2026-08-06
 
 ## Context
-[redacted] sends a JSON header and then a separate binary message per 16 KB chunk. It acknowledges every chunk through the
-server, keeps resume state in server memory, and never verifies integrity.
+A JSON header followed by a separate binary message per chunk is ambiguous once two transfers interleave on the same
+channel, and acknowledging every chunk through the server puts signaling load in the data path. Resume state kept
+only in server memory is lost on restart, and without hashes a truncated transfer can look complete.
 
 ## Decision
 - **Two negotiated data channels:** `control` (reliable, ordered, JSON) and `data` (reliable, unordered, binary).

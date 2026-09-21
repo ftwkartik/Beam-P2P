@@ -12,8 +12,8 @@ Use **FastAPI** (Starlette WebSockets on uvicorn) with a **custom JSON protocol*
 unions in the shared `beam_protocol` package. The protocol is versioned (`hello.v`), size-limited and strict (`extra="forbid"`).
 
 ## Alternatives
-- **Node + Socket.IO (as in [redacted]):** mature, but it moves the backend out of Python, and the Socket.IO wire protocol
-  needs a Socket.IO client in every language.
+- **Node + Socket.IO:** mature, but it moves the backend out of Python, and the Socket.IO wire protocol needs a
+  Socket.IO client in every language.
 - **python-socketio:** keeps Python but inherits Socket.IO's opaque protocol and its own room and manager abstractions,
   which overlap with our Redis design.
 - **Django Channels:** capable, but heavier (ASGI + channel layers + Django) for a service with no ORM needs in the MVP.

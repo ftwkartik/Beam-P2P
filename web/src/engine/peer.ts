@@ -1,9 +1,8 @@
 /**
  * WebRTC peer connection wrapper implementing "perfect negotiation" (docs/protocol.md
- * §4; docs/reference-analysis.md's critique of getting this wrong) plus ICE restart on
- * failure (docs/architecture.md §4.3). Framework-free and independently testable via
- * an injectable `rtcFactory` (docs/adr/007-react-typescript-client.md) -- jsdom (used
- * by Vitest) has no RTCPeerConnection implementation at all.
+ * §4) plus ICE restart on failure (docs/architecture.md §4.3). Framework-free and
+ * independently testable via an injectable `rtcFactory` (docs/adr/007-react-typescript-
+ * client.md) -- jsdom (used by Vitest) has no RTCPeerConnection implementation at all.
  *
  * `polite` comes from the server's `welcome` message (the joiner is polite; docs/
  * protocol.md §3), which is what makes offer/answer collisions resolvable without the

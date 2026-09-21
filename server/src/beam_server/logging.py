@@ -1,9 +1,9 @@
 """Structured logging setup.
 
-Replaces [redacted]'s bare `console.log` (see docs/reference-analysis.md) with structlog,
-rendering human-readable colored output in development and single-line JSON in
-production so logs are queryable. A processor redacts keys that commonly carry
-secrets, matching the policy in docs/security.md ("Secrets and error handling").
+Structured logging via structlog, rendering human-readable colored output in
+development and single-line JSON in production so logs are queryable. A processor
+redacts keys that commonly carry secrets, matching the policy in docs/security.md
+("Secrets and error handling").
 """
 
 from __future__ import annotations
