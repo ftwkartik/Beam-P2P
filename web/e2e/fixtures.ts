@@ -50,7 +50,7 @@ export async function createRoom(page: Page, query?: string): Promise<string> {
   await page.goto(query ? `/?${query}` : "/");
   await page.getByRole("button", { name: "Create a room" }).click();
   await expect(page.getByText("Share this with the other device")).toBeVisible({ timeout: 15_000 });
-  const code = (await page.locator("p.font-mono").first().textContent())?.trim();
+  const code = (await page.getByTestId("room-code").textContent())?.trim();
   if (!code) throw new Error("room code did not render");
   return code;
 }
@@ -67,7 +67,7 @@ export async function waitForConnected(page: Page, timeout = 30_000): Promise<vo
 }
 
 export async function getSas(page: Page): Promise<string> {
-  const text = await page.locator("p.text-2xl").textContent();
+  const text = await page.getByTestId("sas-phrase").textContent();
   if (!text) throw new Error("SAS did not render");
   return text.trim();
 }
