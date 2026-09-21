@@ -1,14 +1,26 @@
+/* Must precede @import "tailwindcss": it expands into ordinary CSS rules, and a
+   remote @import after that point is invalid per the CSS spec (imports must precede
+   all other rules) -- the build silently drops it if the order is swapped. */
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap");
 @import "tailwindcss";
 
 /* Base look, not a design system (docs/adr/007-react-typescript-client.md): the pages
    and components below use Tailwind utility classes directly rather than layering on
-   custom tokens the project doesn't need yet. */
+   custom tokens the project doesn't need yet. Two tokens are the exception -- the
+   parchment background and the pixel wordmark font -- since neither has a stock
+   Tailwind equivalent and both are used identically across every page. */
+@theme {
+  --color-parchment: #f6efd8;
+  --color-parchment-dark: #23271f;
+  --font-pixel: "Press Start 2P", monospace;
+}
+
 :root {
   color-scheme: light dark;
 }
 
 body {
-  @apply m-0 bg-white text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  @apply m-0 bg-parchment text-stone-900 antialiased dark:bg-parchment-dark dark:text-stone-100;
 }
 
 #root {

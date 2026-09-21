@@ -5,9 +5,9 @@ import { useSessionStore } from "../state/session-store";
 
 function ProgressBar({ fraction }: { fraction: number }) {
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+    <div className="h-2 w-full overflow-hidden rounded-full bg-stone-200 dark:bg-stone-800">
       <div
-        className="h-full rounded-full bg-indigo-600 transition-[width]"
+        className="h-full rounded-full bg-green-600 transition-[width]"
         style={{ width: `${Math.min(100, Math.max(0, fraction * 100))}%` }}
       />
     </div>
@@ -21,21 +21,23 @@ function OutgoingTransfer() {
   const rate = outgoing.rate;
 
   return (
-    <section className="mt-6 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-      <p className="text-sm font-medium">Sending {progress ? `(${progress.fileIndex + 1}/${progress.fileCount})` : ""}</p>
+    <section className="mt-4 rounded-md border-2 border-stone-800 p-4 dark:border-stone-300">
+      <p className="text-sm font-medium text-stone-900 dark:text-stone-100">
+        Sending {progress ? `(${progress.fileIndex + 1}/${progress.fileCount})` : ""}
+      </p>
       {progress && (
         <>
           <div className="mt-2">
             <ProgressBar fraction={progress.totalBytesSent / Math.max(1, progress.totalBytes)} />
           </div>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-stone-600 dark:text-stone-400">
             {formatBytes(progress.totalBytesSent)} / {formatBytes(progress.totalBytes)}
             {rate && rate.bytesPerSecond > 0 &&
               ` -- ${formatBytes(rate.bytesPerSecond)}/s -- ${formatDuration(rate.etaSeconds)} left`}
           </p>
         </>
       )}
-      {outgoing.phase === "completed" && <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-400">Done.</p>}
+      {outgoing.phase === "completed" && <p className="mt-1 text-sm text-green-700 dark:text-green-400">Done.</p>}
       {outgoing.error && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{outgoing.error}</p>}
     </section>
   );
@@ -50,12 +52,12 @@ function IncomingOfferConsent() {
   const totalSize = offer.files.reduce((sum, f) => sum + f.size, 0);
 
   return (
-    <section className="mt-6 rounded-xl border border-indigo-300 bg-indigo-50 p-4 dark:border-indigo-800 dark:bg-indigo-950">
-      <p className="text-sm font-medium text-indigo-900 dark:text-indigo-200">
+    <section className="mt-4 rounded-md border-2 border-green-800 bg-green-50 p-4 dark:border-green-400 dark:bg-green-950">
+      <p className="text-sm font-medium text-green-900 dark:text-green-200">
         The other device wants to send you {offer.files.length} file{offer.files.length === 1 ? "" : "s"} (
         {formatBytes(totalSize)})
       </p>
-      <ul className="mt-2 max-h-32 overflow-y-auto text-sm text-slate-600 dark:text-slate-400">
+      <ul className="mt-2 max-h-32 overflow-y-auto text-sm text-stone-600 dark:text-stone-400">
         {offer.files.map((f) => (
           <li key={f.index} className="truncate">
             {f.path} -- {formatBytes(f.size)}
@@ -65,14 +67,14 @@ function IncomingOfferConsent() {
       <div className="mt-3 flex gap-2">
         <button
           type="button"
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white"
+          className="rounded-md border-2 border-green-900 bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 dark:border-green-400"
           onClick={accept}
         >
           Accept
         </button>
         <button
           type="button"
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-slate-700"
+          className="rounded-md border-2 border-stone-400 px-4 py-2 text-sm text-stone-900 dark:border-stone-600 dark:text-stone-100"
           onClick={() => decline()}
         >
           Decline
@@ -89,14 +91,16 @@ function IncomingTransfer() {
   const rate = incoming.rate;
 
   return (
-    <section className="mt-6 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-      <p className="text-sm font-medium">Receiving {progress ? `(${progress.fileIndex + 1}/${progress.fileCount})` : ""}</p>
+    <section className="mt-4 rounded-md border-2 border-stone-800 p-4 dark:border-stone-300">
+      <p className="text-sm font-medium text-stone-900 dark:text-stone-100">
+        Receiving {progress ? `(${progress.fileIndex + 1}/${progress.fileCount})` : ""}
+      </p>
       {progress && (
         <>
           <div className="mt-2">
             <ProgressBar fraction={progress.totalBytesVerified / Math.max(1, progress.totalBytes)} />
           </div>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-stone-600 dark:text-stone-400">
             {formatBytes(progress.totalBytesVerified)} / {formatBytes(progress.totalBytes)}
             {rate && rate.bytesPerSecond > 0 &&
               ` -- ${formatBytes(rate.bytesPerSecond)}/s -- ${formatDuration(rate.etaSeconds)} left`}
@@ -113,14 +117,14 @@ function ReadyFiles() {
   if (readyFiles.length === 0) return null;
 
   return (
-    <section className="mt-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950">
-      <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">Received and verified</p>
+    <section className="mt-4 rounded-md border-2 border-green-800 bg-green-50 p-4 dark:border-green-400 dark:bg-green-950">
+      <p className="text-sm font-medium text-green-900 dark:text-green-300">Received and verified</p>
       <ul className="mt-2 space-y-1">
         {readyFiles.map((f) => {
           const url = URL.createObjectURL(f.blob);
           return (
             <li key={f.fileIndex}>
-              <a href={url} download={f.offer.path.split("/").pop()} className="text-sm text-indigo-700 underline dark:text-indigo-300">
+              <a href={url} download={f.offer.path.split("/").pop()} className="text-sm text-green-700 underline dark:text-green-300">
                 Save {f.offer.path} ({formatBytes(f.offer.size)})
               </a>
             </li>
@@ -150,17 +154,17 @@ export function TransferPanel() {
 
   return (
     <>
-      <section className="mt-6 flex gap-2">
+      <section className="mt-4 flex gap-2">
         <button
           type="button"
-          className="flex-1 rounded-lg border border-slate-300 py-3 text-sm font-medium dark:border-slate-700"
+          className="flex-1 rounded-md border-2 border-stone-800 py-3 text-sm font-medium text-stone-900 transition-colors hover:bg-stone-100 dark:border-stone-300 dark:text-stone-100 dark:hover:bg-stone-800"
           onClick={() => fileInputRef.current?.click()}
         >
           Send files
         </button>
         <button
           type="button"
-          className="flex-1 rounded-lg border border-slate-300 py-3 text-sm font-medium dark:border-slate-700"
+          className="flex-1 rounded-md border-2 border-stone-800 py-3 text-sm font-medium text-stone-900 transition-colors hover:bg-stone-100 dark:border-stone-300 dark:text-stone-100 dark:hover:bg-stone-800"
           onClick={() => folderInputRef.current?.click()}
         >
           Send a folder
