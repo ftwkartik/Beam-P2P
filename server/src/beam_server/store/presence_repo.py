@@ -23,6 +23,11 @@ PresenceState = Literal["online", "reconnecting"]
 #: heartbeats; a crashed process's presence still disappears within one TTL window.
 _PRESENCE_TTL_SECONDS = 60
 
+#: How often a live connection's presence heartbeat runs (ws/endpoint.py) -- well
+#: under the TTL above so a connection that's simply idle, waiting on the next
+#: message, never has its presence silently expire out from under it.
+PRESENCE_REFRESH_INTERVAL_SECONDS = 20
+
 
 def _presence_key(room_id: str, peer_id: str) -> str:
     return f"room:{room_id}:peer:{peer_id}"
@@ -69,12 +74,19 @@ class PresenceRepository:
         data = cast("dict[str, str]", await self._redis.hgetall(_presence_key(room_id, peer_id)))
         if not data:
             return None
-        return PresenceRecord(
-            role=data["role"],
-            state=data["state"],  # type: ignore[arg-type]
-            instance_id=data["instance_id"],
-            last_seen=float(data["last_seen"]),
-        )
+        try:
+            return PresenceRecord(
+                role=data["role"],
+                state=data["state"],  # type: ignore[arg-type]
+                instance_id=data["instance_id"],
+                last_seen=float(data["last_seen"]),
+            )
+        except (KeyError, ValueError):
+            # A partial hash (e.g. set_reconnecting() re-creating the key with only
+            # `state` after the full record's TTL had already lapsed) is exactly as
+            # meaningless as no record at all -- there's nothing complete enough here
+            # to say the peer is verifiably online.
+            return None
 
     async def delete(self, *, room_id: str, peer_id: str) -> None:
         await self._redis.delete(_presence_key(room_id, peer_id))

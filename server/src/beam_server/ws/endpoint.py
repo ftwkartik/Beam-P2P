@@ -51,7 +51,7 @@ from beam_server.observability.metrics import (
 from beam_server.security.origin import is_origin_allowed
 from beam_server.security.tokens import Role, RoomTokenClaims, TokenError, decode_room_token
 from beam_server.services.signaling import SignalingHub
-from beam_server.store.presence_repo import PresenceRepository
+from beam_server.store.presence_repo import PRESENCE_REFRESH_INTERVAL_SECONDS, PresenceRepository
 from beam_server.store.pubsub import RoomPubSub
 from beam_server.store.redis import get_redis
 from beam_server.store.rooms_repo import RoomRecord, RoomsRepository
@@ -199,6 +199,20 @@ async def signaling_endpoint(
         role=claims.role,
         instance_id=instance_id,
     )
+
+    # PresenceRepository.set_online() writes a 60s-TTL record; without something
+    # refreshing it, presence silently expires out from under any connection that
+    # simply stays open (idle, waiting on the next message) longer than that --
+    # set_reconnecting() would then re-create the key with only its one field,
+    # which is exactly what used to crash _on_reconnect_timeout()'s presence_repo.get()
+    # with a bare KeyError on 'role'. Found via CI: a real (fresh-runner, not just
+    # locally-degraded) failure in the resume/reconnect E2E scenario.
+    async def _presence_heartbeat() -> None:
+        while True:
+            await asyncio.sleep(PRESENCE_REFRESH_INTERVAL_SECONDS)
+            await presence_repo.refresh(room_id=claims.room_id, peer_id=claims.peer_id)
+
+    presence_heartbeat_task = asyncio.create_task(_presence_heartbeat())
 
     other_peer_id = _other_peer_id(room, claims)
 
@@ -348,6 +362,10 @@ async def signaling_endpoint(
             await _close(websocket, WS_CLOSE_MALFORMED_MESSAGE)
             return
     finally:
+        presence_heartbeat_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await presence_heartbeat_task
+
         # Was this session ever replaced by a newer one for the same peer ID (see the
         # 4409 handling above)? If so, that newer session has already told the other
         # peer we're here, has its own presence row, and owns the reconnect-grace
