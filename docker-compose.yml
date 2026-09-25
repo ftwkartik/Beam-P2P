@@ -24,6 +24,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    # Published, unlike redis's compose-internal-only port: psql access from the host
+    # is genuinely useful during development, and this stack never leaves localhost.
+    ports:
+      - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
