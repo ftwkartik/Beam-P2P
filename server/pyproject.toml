@@ -13,6 +13,10 @@ dependencies = [
     "redis>=5.2.0",
     "pyjwt>=2.9.0",
     "prometheus-client>=0.21.0",
+    "sqlalchemy[asyncio]>=2.0.35",
+    "asyncpg>=0.30.0",
+    "alembic>=1.13.3",
+    "argon2-cffi>=23.1.0",
 ]
 
 [tool.uv.sources]

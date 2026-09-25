@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     port: int = 8000
 
     redis_url: str = "redis://localhost:6379/0"
+    #: Accounts/history only (Milestone 11); empty string disables that API surface
+    #: entirely (see main.py) so a deployment that doesn't want accounts never pays
+    #: for a DB connection pool it isn't using.
+    database_url: str = ""
 
     #: Origins allowed to open a WebSocket or call the API from a browser.
     allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
@@ -47,6 +51,16 @@ class Settings(BaseSettings):
     code_pepper: SecretStr = SecretStr("")
     #: Shared secret for minting ephemeral TURN credentials. Introduced in Milestone 6.
     turn_secret: SecretStr = SecretStr("")
+
+    # --- Accounts (Milestone 11; docs/data-model.md §3, docs/adr/010) ---------------
+
+    #: Short-lived bearer token proving who's signed in; a new one is minted from a
+    #: refresh token rather than extending this one's life.
+    access_token_ttl_seconds: int = 15 * 60
+    #: Opaque, DB-backed, rotated on every use (docs/adr/010).
+    refresh_token_ttl_seconds: int = 30 * 24 * 60 * 60
+    rate_limit_register_per_hour: int = 10
+    rate_limit_login_per_minute: int = 10
 
     # --- Rooms (Milestone 3; see docs/data-model.md "Redis keyspace") --------------
 
