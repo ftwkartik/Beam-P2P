@@ -16,11 +16,14 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from beam_server.api.auth import router as auth_router
 from beam_server.api.health import router as health_router
+from beam_server.api.history import router as history_router
 from beam_server.api.ice import router as ice_router
 from beam_server.api.metrics import router as metrics_router
 from beam_server.api.rooms import router as rooms_router
 from beam_server.config import Settings, get_settings
+from beam_server.db.engine import create_engine, make_session_factory
 from beam_server.errors import register_exception_handlers
 from beam_server.logging import configure_logging
 from beam_server.observability.middleware import RequestContextMiddleware
@@ -57,12 +60,18 @@ def create_app(
             app.state.redis, app.state.signaling_hub, app.state.instance_id
         )
         app.state.pubsub.start()
+        db_engine = None
+        if settings.database_url:
+            db_engine = create_engine(settings.database_url)
+            app.state.db_session_factory = make_session_factory(db_engine)
         logger.info("app_startup", app_name=settings.app_name, env=settings.env)
         try:
             yield
         finally:
             await app.state.pubsub.stop()
             await close_redis_client(app.state.redis)
+            if db_engine is not None:
+                await db_engine.dispose()
             logger.info("app_shutdown")
 
     app = FastAPI(
@@ -93,6 +102,12 @@ def create_app(
     app.include_router(health_router)
     app.include_router(rooms_router, prefix="/api/v1")
     app.include_router(ice_router, prefix="/api/v1")
+    # Accounts/history (Milestone 11) is opt-in: without DATABASE_URL configured,
+    # these routes simply don't exist, rather than existing and failing every request
+    # (see config.py's database_url docstring).
+    if settings.database_url:
+        app.include_router(auth_router, prefix="/api/v1")
+        app.include_router(history_router, prefix="/api/v1")
     app.include_router(ws_router)
     # Unprefixed, matching Prometheus convention: scrapers expect /metrics directly.
     app.include_router(metrics_router)

@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Annotated
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -30,13 +31,22 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
     return mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
 
+#: `Mapped[datetime]` alone maps to a naive `DateTime` column -- every migrated column
+#: here is `timestamptz` (timezone-aware), and every value this app ever writes is
+#: `datetime.now(UTC)` (also aware). Without this, asyncpg's encoder raises on the
+#: mismatch between an aware Python value and what SQLAlchemy thinks is a naive
+#: column, found by actually running the login flow against a real Postgres, not by
+#: inspection: `TypeError: can't subtract offset-naive and offset-aware datetimes`.
+TZDateTime = Annotated[datetime, mapped_column(DateTime(timezone=True))]
+
+
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     email: Mapped[str] = mapped_column(unique=True)
     password_hash: Mapped[str]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[TZDateTime] = mapped_column(server_default=func.now())
 
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -54,12 +64,12 @@ class RefreshToken(Base):
     #: Never the raw token -- only its hash is stored (docs/security.md's pattern for
     #: anything bearer-token-shaped: a DB leak alone shouldn't hand out live sessions).
     token_hash: Mapped[str] = mapped_column(unique=True)
-    expires_at: Mapped[datetime]
+    expires_at: Mapped[TZDateTime]
     #: Set the moment this token is used to refresh (rotation) or on logout. A token
     #: presented again after that is reuse -- of a stolen or replayed token, since the
     #: legitimate client would have the *new* one instead -- and is rejected.
-    revoked_at: Mapped[datetime | None] = mapped_column(default=None)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    revoked_at: Mapped[TZDateTime | None] = mapped_column(default=None)
+    created_at: Mapped[TZDateTime] = mapped_column(server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="refresh_tokens")
 
@@ -78,7 +88,7 @@ class Transfer(Base):
     peer_label: Mapped[str]
     outcome: Mapped[str]
     total_bytes: Mapped[int] = mapped_column(default=0)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[TZDateTime] = mapped_column(server_default=func.now())
 
     owner: Mapped[User] = relationship(back_populates="transfers")
     files: Mapped[list[TransferFile]] = relationship(
