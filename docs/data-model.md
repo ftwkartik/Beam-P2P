@@ -52,7 +52,12 @@ truth.
 
 ## 3. PostgreSQL schema (Advanced milestone: accounts and history)
 
-Managed by Alembic, with no `create_all`. UUIDv7 primary keys and `timestamptz`.
+Managed by Alembic, with no `create_all`. UUIDv7 primary keys and `timestamptz`, as designed below --
+**implemented as plain `uuid4`** (ADR-010): Python 3.12's stdlib has no UUIDv7 generator (that lands in 3.14),
+and a dependency just for time-sortable primary keys isn't worth it when `created_at` columns already give
+query-time ordering. The `devices` table and `refresh_tokens.family_id` (full reuse-detection with token
+families, not just single-token rotation-and-reject-on-reuse) are also deferred -- documented in ADR-010 as
+scope this milestone's exit criterion doesn't call for, not silently dropped.
 
 ```mermaid
 erDiagram
