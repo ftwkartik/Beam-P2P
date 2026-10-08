@@ -82,6 +82,21 @@ class RoomPubSub:
         self._instance_id = instance_id
         self._pubsub = redis_client.pubsub(ignore_subscribe_messages=True)
         self._refcounts: dict[str, int] = {}
+        # Guards read-modify-write of `self._refcounts` and the decision of whether a
+        # given subscribe/unsubscribe call is the first-subscriber/last-unsubscriber
+        # transition that actually needs to touch Redis. An earlier version mutated
+        # the refcount directly in the caller with no lock at all, and an `await`
+        # (the `_request` round trip below) sandwiched in that first/last-transition
+        # path: two `unsubscribe_room` calls for the same room landing in that gap
+        # (observed via a receiver-reload E2E run with a reconnecting peer) could both
+        # read the refcount before either wrote it back, drain it to zero between
+        # them, and unsubscribe this instance from the room's channel while a
+        # different local peer was still on it -- silently cutting off all further
+        # signal relay to that peer for the rest of the session. Holding this lock for
+        # the whole call (including the `_request` await, when one is needed) makes
+        # each transition atomic with respect to every other caller for the same
+        # `RoomPubSub`, not just the refcount bookkeeping.
+        self._refcount_lock = asyncio.Lock()
         self._pending: asyncio.Queue[_SubscriptionRequest] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
 
@@ -103,25 +118,28 @@ class RoomPubSub:
     async def subscribe_room(self, room_id: str) -> None:
         """Register this instance's interest in `room_id`'s channel and wait (with a
         bounded timeout -- see the module docstring) for the real subscribe to apply.
-        Reference counted: only the first caller for a given room does either.
+        Reference counted: only the first caller for a given room does either -- see
+        `self._refcount_lock` for why that counting is safe under concurrent callers.
         """
-        if self._refcounts.get(room_id, 0) > 0:
-            self._refcounts[room_id] += 1
-            return
-        await self._request("subscribe", room_id)
-        self._refcounts[room_id] = 1
+        async with self._refcount_lock:
+            count = self._refcounts.get(room_id, 0) + 1
+            self._refcounts[room_id] = count
+            if count == 1:
+                await self._request("subscribe", room_id)
 
     async def unsubscribe_room(self, room_id: str) -> None:
         """Release this instance's interest in `room_id`. The underlying Redis
-        UNSUBSCRIBE only happens once every local peer of that room is gone.
+        UNSUBSCRIBE only happens once every local peer of that room is gone -- see
+        `self._refcount_lock` for why that counting is safe under concurrent callers.
         """
-        count = self._refcounts.get(room_id, 0)
-        if count <= 1:
-            self._refcounts.pop(room_id, None)
-            if count == 1:
-                await self._request("unsubscribe", room_id)
-        else:
-            self._refcounts[room_id] = count - 1
+        async with self._refcount_lock:
+            count = self._refcounts.get(room_id, 0) - 1
+            if count <= 0:
+                self._refcounts.pop(room_id, None)
+                if count == 0:
+                    await self._request("unsubscribe", room_id)
+            else:
+                self._refcounts[room_id] = count
 
     async def _request(self, action: Literal["subscribe", "unsubscribe"], room_id: str) -> None:
         done = asyncio.Event()
